@@ -1,0 +1,3248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>天光 · 北京与薛城天气对照</title>
+<meta name="description" content="同一时刻，横向对照北京、薛城区以及更多城市的实时天气、逐时气温与未来七日预报。时间统一为北京时间。">
+<meta name="theme-color" content="#0f1728">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f1728'/%3E%3Cpath d='M7 22a9 9 0 0 1 18 0M3.5 22h25' fill='none' stroke='%23f2c14e' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+<link rel="preconnect" href="https://air-quality-api.open-meteo.com" crossorigin>
+<style>
+/* =========================================================================
+   天光 · 城市天气对照
+   One page, one type system: serif display (Songti) + sans data (PingFang).
+   Palette: neutral paper, pine accent, weather-coloured sky bands.
+   ========================================================================= */
+
+:root {
+  --paper: #f3f2ee;
+  --paper-2: #eae8e1;
+  --paper-3: #e1ded4;
+  --ink: #191a18;
+  --ink-soft: #3c3d38;
+  --muted: #6b6a61;
+  --accent: #1f5a48;
+  --accent-deep: #164336;
+  --accent-soft: #e2e9e4;
+  --accent-ink: #f7f6f0;
+  --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", Georgia, serif;
+  --sans: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --shell: 1280px;
+  --pad: clamp(20px, 4.2vw, 52px);
+  --ease: cubic-bezier(.2, .72, .2, 1);
+  --chart-grid: rgba(25, 26, 24, .1);
+  --chart-grid-strong: rgba(25, 26, 24, .22);
+  --edge: rgba(25, 26, 24, .1);
+  --shadow-float: 0 30px 80px -24px rgba(18, 22, 20, .38), 0 2px 10px rgba(18, 22, 20, .08);
+}
+
+/* ---------- reset ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.55;
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, figure { margin: 0; }
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+img, svg { display: block; max-width: 100%; }
+table { border-collapse: collapse; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.sky :focus-visible { outline-color: currentColor; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.skip-link {
+  position: absolute;
+  left: 16px; top: -60px;
+  z-index: 60;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+  font-size: 14px;
+  transition: top .2s var(--ease);
+}
+.skip-link:focus { top: 12px; }
+
+/* ---------- shared bits ---------- */
+
+.glyph {
+  width: 1em; height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.ui-icon {
+  width: 18px; height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background-color .18s var(--ease), color .18s var(--ease), opacity .18s var(--ease);
+}
+
+.btn--quiet { padding: 0 10px; color: var(--ink-soft); }
+.btn--quiet:hover { background: var(--paper-2); color: var(--ink); }
+
+.btn--solid { background: var(--accent); color: var(--accent-ink); }
+.btn--solid:hover { background: var(--accent-deep); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .6; cursor: progress; }
+
+.btn.is-loading .ui-icon { animation: spin 1.1s linear infinite; }
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px; height: 40px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background-color .18s var(--ease), color .18s var(--ease);
+}
+.icon-btn:hover { background: var(--paper-2); color: var(--ink); }
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--accent-deep); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse {
+  0%, 100% { opacity: .55; }
+  50% { opacity: .95; }
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: clamp(18px, 2.6vw, 30px) var(--pad);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.brand-mark {
+  width: 30px; height: 30px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.brand-name {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  line-height: 1;
+}
+
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--muted);
+  border-left: 1px solid var(--edge);
+  padding-left: 11px;
+  line-height: 1.5;
+}
+
+.clock {
+  justify-self: end;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "label time" "date date";
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 1px;
+  text-align: right;
+}
+
+.clock-label {
+  grid-area: label;
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--muted);
+}
+
+.clock-time {
+  grid-area: time;
+  font-size: clamp(24px, 2.4vw, 30px);
+  font-weight: 300;
+  letter-spacing: .01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.clock-date {
+  grid-area: date;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+
+.mast-tools { display: flex; align-items: center; gap: 6px; }
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  padding: 10px clamp(20px, 4.2vw, 52px);
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+.banner[hidden] { display: none; }
+.banner p { margin: 0; }
+.banner .link-btn { color: var(--accent-deep); white-space: nowrap; }
+
+/* ---------- sky band ---------- */
+
+.sky {
+  --sky-bg: #cfe1ea;
+  --sky-ink: #12232c;
+  --sky-muted: rgba(18, 35, 44, .66);
+  --sky-line: rgba(18, 35, 44, .22);
+  --sky-sun: #d99a2b;
+  --sky-tint: rgba(18, 35, 44, .07);
+  --sky-tint-hover: rgba(18, 35, 44, .13);
+  --sky-dot-ring: rgba(18, 35, 44, .25);
+  background: var(--sky-bg);
+  color: var(--sky-ink);
+  transition: background-color .8s var(--ease), color .8s var(--ease);
+}
+
+.sky[data-phase="dawn"] {
+  --sky-bg: #efd4bb;
+  --sky-ink: #2b1d15;
+  --sky-muted: rgba(43, 29, 21, .66);
+  --sky-line: rgba(43, 29, 21, .22);
+  --sky-sun: #d8863a;
+  --sky-tint: rgba(43, 29, 21, .07);
+  --sky-tint-hover: rgba(43, 29, 21, .13);
+}
+
+.sky[data-phase="golden"] {
+  --sky-bg: #e7b879;
+  --sky-ink: #2a1c10;
+  --sky-muted: rgba(42, 28, 16, .68);
+  --sky-line: rgba(42, 28, 16, .24);
+  --sky-sun: #f9e6b8;
+  --sky-tint: rgba(42, 28, 16, .08);
+  --sky-tint-hover: rgba(42, 28, 16, .15);
+}
+
+.sky[data-phase="dusk"] {
+  --sky-bg: #a7959c;
+  --sky-ink: #1d1720;
+  --sky-muted: rgba(29, 23, 32, .68);
+  --sky-line: rgba(29, 23, 32, .24);
+  --sky-sun: #f0d8b4;
+  --sky-tint: rgba(29, 23, 32, .08);
+  --sky-tint-hover: rgba(29, 23, 32, .15);
+}
+
+.sky[data-phase="night"] {
+  --sky-bg: #0f1728;
+  --sky-ink: #edf1f7;
+  --sky-muted: rgba(237, 241, 247, .66);
+  --sky-line: rgba(237, 241, 247, .22);
+  --sky-sun: #e9eef7;
+  --sky-tint: rgba(255, 255, 255, .06);
+  --sky-tint-hover: rgba(255, 255, 255, .12);
+  --sky-dot-ring: rgba(255, 255, 255, .4);
+}
+
+.sky-inner {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: clamp(30px, 4.4vw, 56px) var(--pad) clamp(34px, 4.6vw, 58px);
+  min-height: clamp(440px, 50vh, 600px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: clamp(40px, 5vw, 64px);
+}
+
+.sky-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(28px, 4vw, 64px);
+}
+
+.sky-copy { max-width: 920px; }
+
+.headline {
+  font-family: var(--serif);
+  font-size: clamp(34px, 4.5vw, 58px);
+  font-weight: 400;
+  line-height: 1.14;
+  letter-spacing: .005em;
+  text-wrap: balance;
+  max-width: 13em;
+  margin: 0;
+}
+
+.insight {
+  margin-top: clamp(16px, 2vw, 22px);
+  max-width: 34ch;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--sky-muted);
+  text-wrap: pretty;
+}
+
+/* solar arc */
+
+.solar {
+  flex: 0 0 auto;
+  width: min(360px, 31vw);
+  padding-top: 6px;
+}
+
+.solar-title {
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--sky-muted);
+  margin: 0 0 2px;
+}
+
+.solar svg { width: 100%; height: auto; overflow: visible; }
+.solar-arc { fill: none; stroke: var(--sky-line); stroke-width: 1.1; }
+.solar-horizon { stroke: var(--sky-line); stroke-width: 1.1; }
+.solar-tick { stroke: var(--sky-line); stroke-width: 1.1; }
+.solar-disc { fill: var(--sky-sun); }
+.solar-moon path { fill: none; stroke: var(--sky-sun); stroke-width: 1.5; stroke-linejoin: round; }
+.solar-cap {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--sky-muted);
+  font-variant-numeric: tabular-nums;
+}
+.solar-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--sky-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* city columns */
+
+.city-row[data-count="3"] { gap: clamp(24px, 3vw, 44px); }
+.city-row[data-count="3"] .city-temp { font-size: clamp(76px, 6.6vw, 100px); }
+
+.city-row[data-count="4"] { gap: clamp(24px, 2.4vw, 36px); }
+.city-row[data-count="5"],
+.city-row[data-count="6"] { gap: clamp(20px, 2vw, 28px); }
+.city-row[data-count="4"] .city,
+.city-row[data-count="5"] .city,
+.city-row[data-count="6"] .city {
+  flex: 1 1 150px;
+  min-width: 150px;
+  max-width: none;
+}
+.city-row[data-count="4"] .city { flex-basis: 170px; min-width: 170px; }
+.city-row[data-count="4"] .city-temp,
+.city-row[data-count="5"] .city-temp,
+.city-row[data-count="6"] .city-temp { font-size: clamp(68px, 6.1vw, 88px); }
+.city-row[data-count="4"] .city-temp-line,
+.city-row[data-count="5"] .city-temp-line,
+.city-row[data-count="6"] .city-temp-line {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.city-row[data-count="4"] .city-cond,
+.city-row[data-count="5"] .city-cond,
+.city-row[data-count="6"] .city-cond { padding-bottom: 0; font-size: 14px; }
+.city-row[data-count="4"] .city-cond .glyph,
+.city-row[data-count="5"] .city-cond .glyph,
+.city-row[data-count="6"] .city-cond .glyph { font-size: 28px; }
+.city-row[data-count="4"] .city-meta,
+.city-row[data-count="5"] .city-meta,
+.city-row[data-count="6"] .city-meta { min-height: 3.3em; }
+.city-row[data-count="6"] .add-city { display: none; }
+
+.swipe-hint {
+  margin: 14px 0 0;
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--sky-muted);
+}
+.swipe-hint[hidden] { display: none; }
+
+.city-row {
+  display: flex;
+  align-items: stretch;
+  gap: clamp(24px, 3.4vw, 52px);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  padding-bottom: 2px;
+}
+.city-row::-webkit-scrollbar { display: none; }
+.city-row.is-scrollable:not(.is-end) {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 14px), transparent 100%);
+  padding-right: 4px;
+}
+
+.city {
+  position: relative;
+  flex: 1 1 236px;
+  min-width: 214px;
+  max-width: 400px;
+  scroll-snap-align: start;
+  padding-top: 4px;
+}
+
+.city-region {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: var(--sky-muted);
+  margin-bottom: 12px;
+}
+
+.city-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--dot, var(--sky-sun));
+  outline: 1px solid var(--sky-dot-ring);
+  outline-offset: 1px;
+  flex: none;
+}
+
+@supports (background: color-mix(in srgb, red, blue)) {
+  .sky .city-dot { background: color-mix(in srgb, var(--dot, var(--sky-sun)) 62%, var(--sky-ink)); }
+}
+
+.city-name {
+  font-family: var(--serif);
+  font-size: clamp(22px, 2.3vw, 29px);
+  font-weight: 400;
+  letter-spacing: .03em;
+  line-height: 1.2;
+  margin: 0 0 4px;
+  padding-right: 30px;
+}
+
+.city-remove {
+  position: absolute;
+  top: 0; right: 0;
+  display: grid;
+  place-items: center;
+  width: 28px; height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--sky-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .18s var(--ease), background-color .18s var(--ease), color .18s var(--ease);
+}
+.city-remove .ui-icon { width: 15px; height: 15px; }
+.city:hover .city-remove,
+.city:focus-within .city-remove { opacity: 1; }
+.city-remove:hover { background: var(--sky-tint); color: var(--sky-ink); }
+
+.city-temp-line {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 2px;
+}
+
+.city-temp {
+  font-family: var(--serif);
+  font-size: clamp(76px, 8.4vw, 112px);
+  line-height: .82;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.city-unit {
+  font-size: .4em;
+  line-height: 1;
+  margin-top: .1em;
+  margin-left: .015em;
+  letter-spacing: 0;
+  color: var(--sky-muted);
+}
+
+.city-cond {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 9px;
+  font-size: 15px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.city-cond .glyph { font-size: 34px; stroke-width: 1.45; }
+
+.city-meta {
+  margin-top: 16px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--sky-muted);
+  font-variant-numeric: tabular-nums;
+}
+.city-meta b { font-weight: 500; color: var(--sky-ink); }
+
+.city-aqi {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--sky-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.aqi-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--aqi);
+  flex: none;
+}
+
+.city--empty .city-temp { color: var(--sky-muted); }
+
+.add-city {
+  flex: 0 0 188px;
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 0;
+  padding: 20px;
+  align-self: flex-start;
+  border: 0;
+  border-radius: 2px;
+  background: var(--sky-tint);
+  color: var(--sky-ink);
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: end;
+  transition: background-color .2s var(--ease);
+}
+.add-city:hover { background: var(--sky-tint-hover); }
+.add-city:disabled { cursor: default; background: var(--sky-tint); opacity: .6; }
+
+.add-city-plus {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--sky-ink);
+  color: var(--sky-bg);
+}
+.add-city-plus .ui-icon { width: 17px; height: 17px; stroke-width: 2; }
+
+.add-city-text {
+  display: block;
+  font-size: 14px;
+  letter-spacing: .02em;
+}
+.add-city-text small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--sky-muted);
+}
+
+/* ---------- sections ---------- */
+
+.section {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: clamp(76px, 10vw, 132px) var(--pad) 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: clamp(28px, 3.6vw, 44px);
+}
+
+.section-title {
+  font-family: var(--serif);
+  font-size: clamp(30px, 3.5vw, 44px);
+  font-weight: 400;
+  letter-spacing: .02em;
+  line-height: 1.15;
+}
+
+.section-note {
+  max-width: 36ch;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted);
+  padding-bottom: 4px;
+  text-wrap: pretty;
+}
+
+/* chart */
+
+.chart-panel { position: relative; }
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  margin-bottom: 18px;
+  min-height: 26px;
+}
+
+.legend-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity .18s var(--ease);
+}
+.legend-btn .legend-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--c);
+  flex: none;
+}
+.legend-btn[aria-pressed="false"] { opacity: .34; }
+.legend-btn:hover { opacity: .7; }
+.legend-btn[aria-pressed="false"]:hover { opacity: .55; }
+
+.chart-wrap { position: relative; }
+
+.chart {
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+  overflow: visible;
+}
+.chart text {
+  font-family: var(--sans);
+  font-size: 11px;
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.chart .axis-line { stroke: var(--chart-grid); stroke-width: 1; }
+.chart .axis-line--zero { stroke: rgba(191, 63, 40, .32); }
+.chart .axis-label--zero { fill: rgba(191, 63, 40, .8); }
+.chart .day-line { stroke: var(--chart-grid); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart .day-label { fill: var(--muted); font-size: 10px; letter-spacing: .06em; }
+.chart .series-path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chart .series-path.is-drawing { animation: draw-in 1.1s var(--ease) both; }
+.chart .cursor-line { stroke: var(--ink); stroke-width: 1; opacity: .28; }
+.chart .cursor-dot {
+  stroke: var(--paper);
+  stroke-width: 2;
+  opacity: 0;
+  transition: opacity .12s var(--ease);
+}
+.chart.is-active .cursor-dot { opacity: 1; }
+.chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+
+@keyframes draw-in {
+  from { stroke-dashoffset: var(--len); }
+  to { stroke-dashoffset: 0; }
+}
+
+.chart-tip {
+  position: absolute;
+  top: 20px; left: 110px;
+  z-index: 3;
+  min-width: 176px;
+  padding: 10px 12px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 0);
+  transition: opacity .14s var(--ease);
+  font-variant-numeric: tabular-nums;
+}
+.chart-tip.is-on { opacity: 1; }
+.tip-time {
+  color: rgba(243, 242, 238, .62);
+  margin-bottom: 6px;
+  letter-spacing: .02em;
+}
+.tip-row {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+}
+.tip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.tip-name { color: rgba(243, 242, 238, .82); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tip-val { font-weight: 600; }
+.tip-cond { color: rgba(243, 242, 238, .6); font-size: 11px; white-space: nowrap; }
+
+.chart-skeleton {
+  height: clamp(260px, 32vw, 340px);
+  background: var(--paper-2);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.legend-temp { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.line-skeleton {
+  height: 20px;
+  margin: 15px 0;
+  background: var(--paper-2);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* table */
+
+.table-scroll { overflow-x: auto; scrollbar-width: thin; }
+.table-scroll::-webkit-scrollbar { height: 4px; }
+.table-scroll::-webkit-scrollbar-thumb { background: var(--paper-3); }
+
+.compare {
+  width: 100%;
+  min-width: 620px;
+  font-size: 13.5px;
+}
+
+.compare thead th {
+  padding: 0 14px 14px;
+  text-align: center;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.compare thead th.row-label {
+  text-align: left;
+  padding-left: 2px;
+  color: var(--muted);
+}
+.compare thead .th-city {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: .03em;
+}
+.compare thead .th-city .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  flex: none;
+}
+
+.compare tbody tr { --row-bg: var(--paper); }
+.compare tbody tr:nth-child(even) { --row-bg: var(--paper-2); }
+.compare tbody tr:hover { --row-bg: var(--paper-3); }
+
+.compare tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 132px;
+  padding: 13px 16px 13px 2px;
+  background: var(--row-bg);
+  text-align: left;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+  font-size: 12.5px;
+  letter-spacing: .02em;
+}
+
+.compare tbody td {
+  padding: 13px 14px;
+  background: var(--row-bg);
+  text-align: center;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cell-cond { display: inline-flex; align-items: center; gap: 7px; }
+.cell-cond .glyph { font-size: 22px; stroke-width: 1.55; }
+.cell-aqi { display: inline-flex; align-items: center; gap: 6px; }
+.cell-sub { color: var(--muted); font-size: 11.5px; }
+
+.empty-state {
+  padding: 20px 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* week */
+
+.week-scroll { overflow-x: auto; scrollbar-width: thin; }
+.week-scroll::-webkit-scrollbar { height: 4px; }
+.week-scroll::-webkit-scrollbar-thumb { background: var(--paper-3); }
+
+.week-table {
+  width: 100%;
+  min-width: 740px;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-table th,
+.week-table td {
+  padding: 14px 8px;
+  background: var(--paper);
+  text-align: center;
+}
+
+.week-table thead th {
+  padding: 0 8px 14px;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: .05em;
+  color: var(--muted);
+  vertical-align: bottom;
+}
+.week-table thead th.is-today { color: var(--ink); }
+.week-head > span { display: block; }
+.week-head .wk-date { margin-top: 2px; font-size: 10.5px; color: var(--muted); }
+.week-table thead .week-corner {
+  padding-left: 2px;
+  text-align: left;
+}
+
+.week-table tbody tr:nth-child(even) th,
+.week-table tbody tr:nth-child(even) td { background: var(--paper-2); }
+.week-table tbody tr:hover th,
+.week-table tbody tr:hover td { background: var(--paper-3); }
+
+.week-table tbody th {
+  padding-left: 2px;
+  font-weight: 400;
+  font-size: 13.5px;
+  letter-spacing: .02em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.week-city {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.week-city .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+
+.week-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.week-cell .glyph { font-size: 23px; stroke-width: 1.5; color: var(--ink-soft); }
+.week-cell .hi { font-size: 15px; }
+.week-cell .lo { font-size: 11.5px; color: var(--muted); }
+
+.only-mobile { display: none; }
+
+/* ---------- footer ---------- */
+
+.footer {
+  margin-top: clamp(84px, 11vw, 148px);
+  background: #151816;
+  color: #f1efe6;
+  padding: clamp(44px, 6vw, 76px) var(--pad) clamp(32px, 4vw, 52px);
+}
+
+.footer-inner {
+  max-width: var(--shell);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 540px);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: end;
+}
+
+.footer-word {
+  font-family: var(--serif);
+  font-size: clamp(56px, 8vw, 104px);
+  font-weight: 400;
+  letter-spacing: .12em;
+  line-height: .95;
+}
+
+.footer-line {
+  margin-top: 18px;
+  font-size: 13px;
+  letter-spacing: .04em;
+  color: rgba(241, 239, 230, .58);
+}
+
+.footer-meta p {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: rgba(241, 239, 230, .6);
+  max-width: 56ch;
+}
+.footer-meta p:last-child { margin-bottom: 0; }
+.footer-meta a {
+  color: #f1efe6;
+  text-decoration-color: rgba(241, 239, 230, .4);
+  text-underline-offset: 3px;
+}
+.footer-small { font-size: 11.5px !important; color: rgba(241, 239, 230, .4) !important; }
+
+/* ---------- dialog ---------- */
+
+.dialog {
+  width: min(580px, calc(100vw - 28px));
+  max-height: min(84vh, 760px);
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+.dialog::backdrop { background: rgba(15, 23, 40, .5); }
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  max-height: min(84vh, 760px);
+  padding: clamp(20px, 3.4vw, 32px) clamp(20px, 3.4vw, 34px) 20px;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.dialog-title {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: .03em;
+  margin: 0 0 6px;
+}
+
+.dialog-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--paper-2);
+  border-radius: 2px;
+  transition: background-color .18s var(--ease);
+}
+.search-field:focus-within { background: var(--paper-3); }
+.search-field .ui-icon { color: var(--muted); }
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.search-field input::placeholder { color: var(--muted); }
+.search-field input::-webkit-search-cancel-button { display: none; }
+
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.chip {
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color .16s var(--ease), color .16s var(--ease);
+}
+.chip:hover { background: var(--paper-3); color: var(--ink); }
+.chip:disabled { opacity: .42; cursor: default; }
+
+.results {
+  margin-top: 16px;
+  overflow-y: auto;
+  min-height: 44px;
+  max-height: 300px;
+  scrollbar-width: thin;
+}
+
+.result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 11px 2px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-top: 1px solid var(--edge);
+  transition: background-color .16s var(--ease);
+}
+.result-row:hover { background: var(--paper-2); }
+.result-row:disabled { cursor: default; }
+.result-main { min-width: 0; }
+.result-name {
+  font-size: 14.5px;
+  letter-spacing: .02em;
+  display: block;
+}
+.result-region {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+.result-add {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: .02em;
+}
+.result-row:disabled .result-add { color: var(--muted); }
+.result-hint, .result-status {
+  padding: 10px 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--edge);
+}
+.dialog-count { font-size: 11.5px; color: var(--muted); }
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 80;
+  transform: translate(-50%, 16px);
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+  font-size: 13px;
+  letter-spacing: .02em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s var(--ease), transform .22s var(--ease);
+}
+.toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+
+.noscript {
+  position: fixed;
+  left: 16px; right: 16px; bottom: 16px;
+  z-index: 90;
+  padding: 14px 18px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+}
+
+/* ---------- reveal ---------- */
+
+.js .reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .8s var(--ease), transform .8s var(--ease);
+}
+.js .reveal.is-in { opacity: 1; transform: none; }
+
+.js .sky-copy { animation: rise .9s var(--ease) both; }
+.js .solar { animation: fade 1.2s var(--ease) both .15s; }
+.js .city-row--first .city,
+.js .city-row--first .add-city {
+  animation: rise .8s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 120ms);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1024px) {
+  .sky-main { gap: 32px; }
+  .solar { width: min(300px, 30vw); }
+  .city { max-width: 340px; }
+}
+
+@media (max-width: 860px) {
+  .solar { display: none; }
+  .masthead {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand tools"
+      "clock clock";
+    align-items: center;
+    row-gap: 12px;
+  }
+  .brand { grid-area: brand; }
+  .mast-tools { grid-area: tools; justify-self: end; }
+  .clock {
+    grid-area: clock;
+    justify-self: start;
+    grid-template-columns: auto auto auto;
+    grid-template-areas: "label time date";
+    column-gap: 10px;
+    text-align: left;
+  }
+  .clock-date { align-self: baseline; }
+  .section-head { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .section-note { max-width: 46ch; }
+  .footer-inner { grid-template-columns: 1fr; align-items: start; }
+}
+
+@media (max-width: 640px) {
+  .brand-sub { display: none; }
+  .brand-name { font-size: 22px; }
+  .brand-mark { width: 27px; height: 27px; }
+
+  .clock { grid-template-columns: auto auto; grid-template-areas: "label time" "date date"; row-gap: 2px; }
+  .clock-time { font-size: 23px; }
+
+  .mast-tools .btn--quiet { padding: 0; width: 42px; justify-content: center; }
+  .mast-tools .btn--quiet .btn-label { display: none; }
+  .btn { min-height: 40px; padding: 0 13px; font-size: 13.5px; }
+  .btn--solid { padding: 0 14px; }
+
+  .sky-inner {
+    min-height: 0;
+    gap: 40px;
+    padding-top: 30px;
+    padding-bottom: 34px;
+  }
+  .headline { font-size: clamp(30px, 8.4vw, 38px); }
+  .insight { font-size: 13px; margin-top: 14px; max-width: 30ch; }
+  .city-row { gap: 32px; }
+  .city-row[data-count] .city { flex: 0 0 100%; max-width: none; min-width: 0; }
+  .city-row[data-count] .city-temp { font-size: clamp(72px, 22vw, 92px); }
+  .city-row[data-count] .city-temp-line { flex-direction: row; align-items: flex-end; gap: 10px 18px; }
+  .city-row[data-count] .city-cond { padding-bottom: 9px; font-size: 15px; }
+  .city-row[data-count] .city-cond .glyph { font-size: 30px; }
+  .city-row[data-count="6"] .add-city { display: flex; }
+
+  /* two cities sit side by side on a phone: the comparison stays visible */
+  .city-row[data-count="2"] { gap: 18px; overflow-x: visible; }
+  .city-row[data-count="2"] .city { flex: 1 1 0; min-width: 0; }
+  .city-row[data-count="2"] .city-temp { font-size: clamp(58px, 16vw, 70px); }
+  .city-row[data-count="2"] .city-temp-line { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .city-row[data-count="2"] .city-cond { padding-bottom: 0; font-size: 13.5px; }
+  .city-row[data-count="2"] .city-cond .glyph { font-size: 26px; }
+  .city-row[data-count="2"] .city-meta { font-size: 11px; margin-top: 12px; }
+  .city-row[data-count="2"] .city-aqi { font-size: 10.5px; flex-wrap: wrap; }
+  .city-row[data-count="2"] .add-city { display: none; }
+  .city-temp { font-size: clamp(72px, 22vw, 92px); }
+  .city-remove { opacity: .38; background: transparent; width: 24px; height: 24px; top: -2px; }
+  .city-remove:active { opacity: .8; background: var(--sky-tint); }
+  .add-city { flex: 0 0 100%; max-width: none; margin-left: 0; }
+
+  .city-cond .glyph { font-size: 30px; }
+
+  .section { padding-top: clamp(64px, 16vw, 88px); }
+  .section-title { font-size: clamp(27px, 7.5vw, 34px); }
+
+  .chart-legend { gap: 2px 16px; margin-bottom: 14px; }
+  .legend-btn { font-size: 12px; }
+
+  .compare {
+    min-width: calc(84px + var(--city-count, 2) * 132px);
+    width: 100%;
+    table-layout: fixed;
+    font-size: 12px;
+  }
+  .compare thead th { padding: 0 4px 12px; font-size: 10.5px; letter-spacing: .02em; }
+  .compare thead th.row-label { width: 84px; padding-left: 0; }
+  .compare thead .th-city { gap: 4px; font-size: 11.5px; }
+  .compare tbody th {
+    width: 84px;
+    padding: 11px 4px 11px 0;
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .compare tbody td { padding: 11px 4px; white-space: normal; font-size: 11.5px; }
+  .compare .cell-cond { gap: 4px; }
+  .compare .cell-cond .glyph { font-size: 18px; }
+  .compare .cell-sub { font-size: 10px; }
+  .week-table { min-width: 640px; }
+  .only-mobile { display: inline; }
+
+  .footer-word { font-size: clamp(52px, 18vw, 72px); }
+  .footer-meta p { font-size: 12px; }
+
+  .dialog-body { padding: 20px 18px 16px; }
+  .dialog-title { font-size: 24px; }
+  .results { max-height: 240px; }
+  .toast { bottom: 18px; max-width: calc(100vw - 32px); text-align: center; }
+}
+
+@media (hover: none) {
+  .city-remove { opacity: .6; }
+  .city-remove:active { background: var(--sky-tint); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .js .reveal { opacity: 1; transform: none; }
+}
+
+</style>
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <symbol id="i-mark" viewBox="0 0 32 32">
+    <path d="M7 23a9 9 0 0 1 18 0"/>
+    <path d="M3.5 23h25"/>
+    <path d="M16 4.5v2.6M7.3 8.1l1.8 1.8M24.7 8.1l-1.8 1.8"/>
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.2"/>
+    <path d="M12 2.2v1.8M12 20v1.8M2.2 12H4M20 12h1.8M5.2 5.2l1.3 1.3M17.5 17.5l1.3 1.3M5.2 18.8l1.3-1.3M17.5 6.5l1.3-1.3"/>
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+  </symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24">
+    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/>
+  </symbol>
+  <symbol id="i-cloud-sun" viewBox="0 0 24 24">
+    <circle cx="7.4" cy="7.2" r="3.1"/>
+    <path d="M7.4 1.9v1.5M1.9 7.2h1.5M3.5 3.3l1.1 1.1"/>
+    <g transform="translate(6.4 4.6) scale(0.64)"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/></g>
+  </symbol>
+  <symbol id="i-cloud-moon" viewBox="0 0 24 24">
+    <path d="M10.4 7.8A4.6 4.6 0 1 1 6.6 1.3a3.6 3.6 0 0 0 3.8 6.5Z" transform="translate(-0.4 0.6)"/>
+    <g transform="translate(6.4 4.6) scale(0.64)"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/></g>
+  </symbol>
+  <symbol id="i-overcast" viewBox="0 0 24 24">
+    <g opacity="0.5" transform="translate(1.6 -1.2) scale(0.78)"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/></g>
+    <g transform="translate(0.8 3.4) scale(0.86)"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/></g>
+  </symbol>
+  <symbol id="i-fog" viewBox="0 0 24 24">
+    <g transform="translate(0 -2.2) scale(0.92)"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/></g>
+    <path d="M6.6 20.3h10.8M8.6 22.6h7.4"/>
+  </symbol>
+  <symbol id="i-drizzle" viewBox="0 0 24 24">
+    <path d="M18 9.4h-1.26A8 8 0 1 0 9 19.4h9a5 5 0 0 0 0-10Z"/>
+    <path d="M8.8 20.4l-.4 1.4M13 20.4l-.4 1.4M17.2 20.4l-.4 1.4"/>
+  </symbol>
+  <symbol id="i-rain" viewBox="0 0 24 24">
+    <path d="M18 9h-1.26A8 8 0 1 0 9 19h9a5 5 0 0 0 0-10Z"/>
+    <path d="M9.2 20.4l-1.1 2.2M13.2 20.4l-1.1 2.2M17.2 20.4l-1.1 2.2"/>
+  </symbol>
+  <symbol id="i-rain-heavy" viewBox="0 0 24 24">
+    <path d="M18 8.6h-1.26A8 8 0 1 0 9 18.6h9a5 5 0 0 0 0-10Z"/>
+    <path d="M7.6 20l-1.4 2.7M11 20l-1.4 2.7M14.4 20l-1.4 2.7M17.8 20l-1.4 2.7"/>
+  </symbol>
+  <symbol id="i-snow" viewBox="0 0 24 24">
+    <path d="M18 9h-1.26A8 8 0 1 0 9 19h9a5 5 0 0 0 0-10Z"/>
+    <path d="M8.2 20.2v2.4M7 21.4h2.4M13 20.7v2.4M11.8 21.9h2.4M17.4 20.1v2.4M16.2 21.3h2.4"/>
+  </symbol>
+  <symbol id="i-sleet" viewBox="0 0 24 24">
+    <path d="M18 9h-1.26A8 8 0 1 0 9 19h9a5 5 0 0 0 0-10Z"/>
+    <path d="M9.4 20.2l-1 2.1M14.6 20.2v2.2M13.5 21.3h2.2"/>
+  </symbol>
+  <symbol id="i-thunder" viewBox="0 0 24 24">
+    <g transform="translate(0 -1.6)"><path d="M18 9h-1.26A8 8 0 1 0 9 19h9a5 5 0 0 0 0-10Z"/></g>
+    <path d="M13 18.4l-2.6 3.1h2.4l-1.3 2.2"/>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.2v13.6M5.2 12h13.6"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.2 6.2l11.6 11.6M17.8 6.2L6.2 17.8"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24">
+    <path d="M21 4v5h-5"/>
+    <path d="M20.4 14.2A8.5 8.5 0 1 1 18.2 5.8L21 8.6"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4L21 21"/></symbol>
+</svg>
+
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<header class="masthead">
+  <a class="brand" href="./" aria-label="天光 · 城市天气对照">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"></use></svg>
+    <span class="brand-name">天光</span>
+    <span class="brand-sub">城市天气对照</span>
+  </a>
+
+  <div class="clock" role="group" aria-label="北京时间">
+    <span class="clock-label">北京时间</span>
+    <time class="clock-time" id="clock-time" datetime="">--:--:--</time>
+    <span class="clock-date" id="clock-date">—</span>
+  </div>
+
+  <div class="mast-tools">
+    <button type="button" class="btn btn--quiet" id="refresh-btn" aria-label="刷新天气数据">
+      <svg class="ui-icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+      <span class="btn-label">刷新</span>
+    </button>
+    <button type="button" class="btn btn--solid" id="add-btn">
+      <svg class="ui-icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+      <span class="btn-label">添加城市</span>
+    </button>
+  </div>
+</header>
+
+<div class="banner" id="banner" role="status" hidden>
+  <p id="banner-text"></p>
+  <button type="button" class="link-btn" id="banner-retry">重试</button>
+</div>
+
+<main id="main">
+  <section class="sky" id="sky" data-phase="night" aria-labelledby="headline">
+    <div class="sky-inner">
+      <div class="sky-main">
+        <div class="sky-copy">
+          <h1 class="headline" id="headline">此刻，北京与薛城</h1>
+          <p class="insight" id="insight">正在获取两座城市的实时天气…</p>
+        </div>
+        <div class="solar" id="solar" aria-label="北京今日日照"></div>
+      </div>
+      <div class="city-row" id="city-row" role="group" aria-label="城市天气对照"></div>
+      <p class="swipe-hint" id="swipe-hint" hidden>横向滚动，比较全部城市 →</p>
+    </div>
+  </section>
+
+  <section class="section" id="hourly" aria-labelledby="hourly-title">
+    <div class="section-head reveal">
+      <h2 class="section-title" id="hourly-title">未来二十四小时</h2>
+      <p class="section-note">逐时气温对照。悬停、触摸或聚焦图表后，查看每个小时各城的数值。</p>
+    </div>
+    <div class="chart-panel reveal">
+      <div class="chart-legend" id="chart-legend" aria-label="城市图例，点击可隐藏或显示"></div>
+      <div class="chart-wrap" id="chart-wrap">
+        <div class="chart-skeleton" aria-hidden="true"></div>
+      </div>
+      <p class="sr-only" id="chart-live" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section class="section" id="compare" aria-labelledby="compare-title">
+    <div class="section-head reveal">
+      <h2 class="section-title" id="compare-title">逐项对照</h2>
+      <p class="section-note">同一时刻、同一口径下的指标，均为北京时间。</p>
+    </div>
+    <div class="table-scroll reveal" id="compare-table">
+      <div class="line-skeleton" aria-hidden="true"></div>
+      <div class="line-skeleton" aria-hidden="true"></div>
+      <div class="line-skeleton" aria-hidden="true"></div>
+      <div class="line-skeleton" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section class="section" id="weekly" aria-labelledby="weekly-title">
+    <div class="section-head reveal">
+      <h2 class="section-title" id="weekly-title">未来七日</h2>
+      <p class="section-note">数字为当日最高 / 最低气温，均为北京时间。<span class="only-mobile">左右滑动查看全部日期。</span></p>
+    </div>
+    <div class="week-scroll reveal" id="week-grid">
+      <div class="line-skeleton" aria-hidden="true"></div>
+      <div class="line-skeleton" aria-hidden="true"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-lead">
+      <p class="footer-word">天光</p>
+      <p class="footer-line">同一个时刻，不同的天空。</p>
+    </div>
+    <div class="footer-meta">
+      <p>数据来自 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> 的天气预报与空气质量模型（CC BY 4.0）。空气质量等级按 PM2.5 折算，仅供参考。</p>
+      <p>所有时间均为北京时间（UTC+8）。页面每 10 分钟自动更新，最近更新 <span id="updated-at">—</span>。</p>
+      <p class="footer-small">预报存在不确定性，出行请以当地气象台发布的信息为准。</p>
+    </div>
+  </div>
+</footer>
+
+<dialog class="dialog" id="add-dialog" aria-labelledby="add-title">
+  <div class="dialog-body">
+    <div class="dialog-head">
+      <div>
+        <h2 class="dialog-title" id="add-title">添加城市</h2>
+        <p class="dialog-sub">最多同时对照 <span id="max-cities">6</span> 座城市，时间统一为北京时间。</p>
+      </div>
+      <button type="button" class="icon-btn" id="dialog-close" aria-label="关闭">
+        <svg class="ui-icon" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="search-field">
+      <svg class="ui-icon" aria-hidden="true"><use href="#i-search"></use></svg>
+      <input id="city-search" type="search" placeholder="搜索城市，例如 上海、成都" autocomplete="off" aria-label="搜索城市">
+    </div>
+    <div class="quick" id="quick-cities" aria-label="热门城市"></div>
+    <div class="results" id="city-results" aria-label="搜索结果"></div>
+    <div class="dialog-foot">
+      <button type="button" class="link-btn" id="reset-cities">恢复默认（北京 / 薛城区）</button>
+      <span class="dialog-count" id="city-count">已添加 2 座</span>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<noscript>
+  <div class="noscript">天光需要启用 JavaScript 才能获取实时天气数据。</div>
+</noscript>
+
+<script>
+/* =========================================================================
+   天光 · 城市天气对照
+   Vanilla JS, no build step. Data: Open-Meteo forecast + air quality.
+   ========================================================================= */
+'use strict';
+
+(function () {
+  /* ---------------------------------------------------------------------
+     Constants
+     --------------------------------------------------------------------- */
+  const API = {
+    forecast: 'https://api.open-meteo.com/v1/forecast',
+    air: 'https://air-quality-api.open-meteo.com/v1/air-quality',
+    geo: 'https://geocoding-api.open-meteo.com/v1/search'
+  };
+  const BJ_TZ = 'Asia/Shanghai';
+  const MAX_CITIES = 6;
+  const DEFAULT_IDS = ['beijing', 'xuecheng'];
+  const STORE_CITIES = 'tianguang.cities.v1';
+  const STORE_CACHE = 'tianguang.cache.v1';
+  const AUTO_REFRESH_MS = 10 * 60 * 1000;
+  const MAX_RESULTS = 8;
+
+  const PALETTE = ['#b4452e', '#2f5d7c', '#6b7a35', '#7c4d72', '#a8792c', '#2e7364'];
+
+  const FORECAST_PARAMS = new URLSearchParams({
+    timezone: BJ_TZ,
+    current: [
+      'temperature_2m', 'relative_humidity_2m', 'apparent_temperature', 'is_day',
+      'precipitation', 'weather_code', 'cloud_cover', 'pressure_msl',
+      'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'visibility'
+    ].join(','),
+    hourly: 'temperature_2m,precipitation_probability,weather_code',
+    daily: [
+      'weather_code', 'temperature_2m_max', 'temperature_2m_min', 'sunrise', 'sunset',
+      'uv_index_max', 'precipitation_probability_max', 'wind_speed_10m_max'
+    ].join(','),
+    wind_speed_unit: 'kmh',
+    forecast_days: '7'
+  });
+
+  const AIR_PARAMS = new URLSearchParams({
+    timezone: BJ_TZ,
+    current: 'pm2_5,pm10,us_aqi'
+  });
+
+  const PRESETS = [
+    { id: 'beijing', name: '北京', short: '北京', region: '北京市', lat: 39.9042, lon: 116.4074 },
+    { id: 'xuecheng', name: '薛城区', short: '薛城', region: '山东 · 枣庄', lat: 34.7953, lon: 117.2633 },
+    { id: 'shanghai', name: '上海', short: '上海', region: '上海市', lat: 31.2304, lon: 121.4737 },
+    { id: 'guangzhou', name: '广州', short: '广州', region: '广东', lat: 23.1291, lon: 113.2644 },
+    { id: 'shenzhen', name: '深圳', short: '深圳', region: '广东', lat: 22.5431, lon: 114.0579 },
+    { id: 'hangzhou', name: '杭州', short: '杭州', region: '浙江', lat: 30.2741, lon: 120.1551 },
+    { id: 'chengdu', name: '成都', short: '成都', region: '四川', lat: 30.5728, lon: 104.0668 },
+    { id: 'chongqing', name: '重庆', short: '重庆', region: '重庆市', lat: 29.5630, lon: 106.5516 },
+    { id: 'wuhan', name: '武汉', short: '武汉', region: '湖北', lat: 30.5928, lon: 114.3055 },
+    { id: 'xian', name: '西安', short: '西安', region: '陕西', lat: 34.3416, lon: 108.9398 },
+    { id: 'nanjing', name: '南京', short: '南京', region: '江苏', lat: 32.0603, lon: 118.7969 },
+    { id: 'tianjin', name: '天津', short: '天津', region: '天津市', lat: 39.3434, lon: 117.3616 },
+    { id: 'suzhou', name: '苏州', short: '苏州', region: '江苏', lat: 31.2989, lon: 120.5853 },
+    { id: 'changsha', name: '长沙', short: '长沙', region: '湖南', lat: 28.2282, lon: 112.9388 },
+    { id: 'zhengzhou', name: '郑州', short: '郑州', region: '河南', lat: 34.7466, lon: 113.6254 },
+    { id: 'qingdao', name: '青岛', short: '青岛', region: '山东', lat: 36.0671, lon: 120.3826 },
+    { id: 'jinan', name: '济南', short: '济南', region: '山东', lat: 36.6512, lon: 117.1201 },
+    { id: 'zaozhuang', name: '枣庄', short: '枣庄', region: '山东', lat: 34.8107, lon: 117.3210 },
+    { id: 'shenyang', name: '沈阳', short: '沈阳', region: '辽宁', lat: 41.8057, lon: 123.4315 },
+    { id: 'harbin', name: '哈尔滨', short: '哈尔滨', region: '黑龙江', lat: 45.8038, lon: 126.5349 },
+    { id: 'kunming', name: '昆明', short: '昆明', region: '云南', lat: 25.0389, lon: 102.7183 },
+    { id: 'xiamen', name: '厦门', short: '厦门', region: '福建', lat: 24.4798, lon: 118.0894 },
+    { id: 'fuzhou', name: '福州', short: '福州', region: '福建', lat: 26.0745, lon: 119.2965 },
+    { id: 'hefei', name: '合肥', short: '合肥', region: '安徽', lat: 31.8206, lon: 117.2272 },
+    { id: 'nanchang', name: '南昌', short: '南昌', region: '江西', lat: 28.6820, lon: 115.8579 },
+    { id: 'taiyuan', name: '太原', short: '太原', region: '山西', lat: 37.8706, lon: 112.5489 },
+    { id: 'shijiazhuang', name: '石家庄', short: '石家庄', region: '河北', lat: 38.0428, lon: 114.5149 },
+    { id: 'urumqi', name: '乌鲁木齐', short: '乌鲁木齐', region: '新疆', lat: 43.8256, lon: 87.6168 },
+    { id: 'lhasa', name: '拉萨', short: '拉萨', region: '西藏', lat: 29.6520, lon: 91.1721 },
+    { id: 'haikou', name: '海口', short: '海口', region: '海南', lat: 20.0440, lon: 110.1999 },
+    { id: 'sanya', name: '三亚', short: '三亚', region: '海南', lat: 18.2528, lon: 109.5119 },
+    { id: 'hongkong', name: '香港', short: '香港', region: '香港', lat: 22.3193, lon: 114.1694 },
+    { id: 'taipei', name: '台北', short: '台北', region: '台湾', lat: 25.0330, lon: 121.5654 },
+    { id: 'mohe', name: '漠河', short: '漠河', region: '黑龙江', lat: 52.9722, lon: 122.5389 },
+    { id: 'dalian', name: '大连', short: '大连', region: '辽宁', lat: 38.9140, lon: 121.6147 },
+    { id: 'lanzhou', name: '兰州', short: '兰州', region: '甘肃', lat: 36.0611, lon: 103.8343 },
+    { id: 'yinchuan', name: '银川', short: '银川', region: '宁夏', lat: 38.4872, lon: 106.2309 },
+    { id: 'xining', name: '西宁', short: '西宁', region: '青海', lat: 36.6171, lon: 101.7782 },
+    { id: 'hohhot', name: '呼和浩特', short: '呼和浩特', region: '内蒙古', lat: 40.8414, lon: 111.7519 },
+    { id: 'guiyang', name: '贵阳', short: '贵阳', region: '贵州', lat: 26.6470, lon: 106.6302 },
+    { id: 'nanning', name: '南宁', short: '南宁', region: '广西', lat: 22.8170, lon: 108.3665 }
+  ];
+
+  const QUICK_IDS = ['shanghai', 'guangzhou', 'hangzhou', 'chengdu', 'wuhan', 'xian', 'qingdao', 'harbin', 'sanya', 'lhasa', 'hongkong', 'mohe'];
+
+  const WEATHER = {
+    0: ['晴', 'sun', 'clear'],
+    1: ['晴间多云', 'partly', 'cloud'],
+    2: ['多云', 'cloud', 'cloud'],
+    3: ['阴', 'overcast', 'cloud'],
+    45: ['雾', 'fog', 'fog'],
+    48: ['雾凇', 'fog', 'fog'],
+    51: ['毛毛雨', 'drizzle', 'rain'],
+    53: ['毛毛雨', 'drizzle', 'rain'],
+    55: ['毛毛雨', 'drizzle', 'rain'],
+    56: ['冻雨', 'sleet', 'sleet'],
+    57: ['冻雨', 'sleet', 'sleet'],
+    61: ['小雨', 'rain', 'rain'],
+    63: ['中雨', 'rain', 'rain'],
+    65: ['大雨', 'heavy', 'rain'],
+    66: ['冻雨', 'sleet', 'sleet'],
+    67: ['冻雨', 'sleet', 'sleet'],
+    71: ['小雪', 'snow', 'snow'],
+    73: ['中雪', 'snow', 'snow'],
+    75: ['大雪', 'snow', 'snow'],
+    77: ['米雪', 'snow', 'snow'],
+    80: ['阵雨', 'rain', 'rain'],
+    81: ['强阵雨', 'heavy', 'rain'],
+    82: ['暴雨', 'heavy', 'rain'],
+    85: ['阵雪', 'snow', 'snow'],
+    86: ['强阵雪', 'snow', 'snow'],
+    95: ['雷阵雨', 'thunder', 'thunder'],
+    96: ['雷暴冰雹', 'thunder', 'thunder'],
+    99: ['雷暴冰雹', 'thunder', 'thunder']
+  };
+
+  const GLYPH_ID = {
+    sun: 'i-sun', moon: 'i-moon', partly: 'i-cloud-sun', 'partly-night': 'i-cloud-moon',
+    cloud: 'i-cloud', overcast: 'i-overcast', fog: 'i-fog', drizzle: 'i-drizzle',
+    rain: 'i-rain', heavy: 'i-rain-heavy', snow: 'i-snow', sleet: 'i-sleet', thunder: 'i-thunder'
+  };
+
+  const SKY_THEMES = {
+    day: '#cfe1ea',
+    dawn: '#efd4bb',
+    golden: '#e7b879',
+    dusk: '#a7959c',
+    night: '#0f1728'
+  };
+
+  /* ---------------------------------------------------------------------
+     Small utilities
+     --------------------------------------------------------------------- */
+  const $ = (sel, root = document) => root.querySelector(sel);
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+  const fmt1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : '—');
+  const fmtTemp = (n) => (Number.isFinite(n) ? `${n.toFixed(1).replace('-', '−')}°` : '—');
+  const fmtInt = (n) => (Number.isFinite(n) ? String(Math.round(n)).replace('-', '−') : '—');
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  function hhmm(isoLocal) {
+    if (typeof isoLocal !== 'string' || isoLocal.length < 16) return '—';
+    return isoLocal.slice(11, 16);
+  }
+
+  function minutesOf(isoLocal) {
+    if (typeof isoLocal !== 'string' || isoLocal.length < 16) return null;
+    const h = Number(isoLocal.slice(11, 13));
+    const m = Number(isoLocal.slice(14, 16));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  }
+
+  function fmtDuration(minutes) {
+    if (!Number.isFinite(minutes) || minutes < 0) return '—';
+    const m = Math.round(minutes);
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    if (h <= 0) return `${rest} 分钟`;
+    return rest === 0 ? `${h} 小时` : `${h} 小时 ${rest} 分`;
+  }
+
+  function readJSON(raw) {
+    try { return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+
+  function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* private mode / quota */ }
+  }
+
+  function safeGet(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  function debounce(fn, wait) {
+    let timer = 0;
+    return function debounced(...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), wait);
+    };
+  }
+
+  /* ---------------------------------------------------------------------
+     Time / solar helpers (all display in Beijing time)
+     --------------------------------------------------------------------- */
+  const SEC_FMT = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: BJ_TZ, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  const HM_FMT = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: BJ_TZ, hourCycle: 'h23', hour: '2-digit', minute: '2-digit'
+  });
+  const DATE_FMT = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: BJ_TZ, year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+  });
+  const WEEK_FMT = new Intl.DateTimeFormat('zh-CN', { timeZone: BJ_TZ, weekday: 'short' });
+  const PARTS_FMT = new Intl.DateTimeFormat('en-GB', {
+    timeZone: BJ_TZ, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+
+  function bjParts(date = new Date()) {
+    const out = {};
+    for (const part of PARTS_FMT.formatToParts(date)) {
+      if (part.type !== 'literal') out[part.type] = part.value;
+    }
+    const hour = Number(out.hour) % 24;
+    const minute = Number(out.minute);
+    return {
+      date: `${out.year}-${out.month}-${out.day}`,
+      hour,
+      minute,
+      minutes: hour * 60 + minute
+    };
+  }
+
+  function timeHM(dateLike) {
+    if (!dateLike) return '—';
+    return HM_FMT.format(new Date(dateLike));
+  }
+
+  function solarElevation(date, lat, lon) {
+    const rad = Math.PI / 180;
+    const jd = date.getTime() / 86400000 + 2440587.5;
+    const n = jd - 2451545.0;
+    const L = ((280.460 + 0.9856474 * n) % 360 + 360) % 360;
+    const g = ((357.528 + 0.9856003 * n) % 360 + 360) % 360;
+    const lambda = (L + 1.915 * Math.sin(g * rad) + 0.020 * Math.sin(2 * g * rad)) * rad;
+    const eps = (23.439 - 0.0000004 * n) * rad;
+    const decl = Math.asin(Math.sin(eps) * Math.sin(lambda));
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) / rad;
+    const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const lst = ((gmst + lon / 15) % 24 + 24) % 24;
+    const hourAngle = ((((lst * 15 - ra) % 360) + 540) % 360) - 180;
+    const sinEl = Math.sin(lat * rad) * Math.sin(decl) +
+      Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle * rad);
+    return Math.asin(clamp(sinEl, -1, 1)) / rad;
+  }
+
+  function computePhase() {
+    const ref = referenceCity();
+    const lat = ref ? ref.lat : 39.9042;
+    const lon = ref ? ref.lon : 116.4074;
+    const now = new Date();
+    const elev = solarElevation(now, lat, lon);
+    const before = solarElevation(new Date(now.getTime() - 15 * 60000), lat, lon);
+    if (elev >= 8) return 'day';
+    if (elev >= 0) return before <= elev ? 'dawn' : 'golden';
+    if (elev >= -10) return 'dusk';
+    return 'night';
+  }
+
+  function condition(code, isDay) {
+    const row = WEATHER[code] || ['多云', 'cloud', 'cloud'];
+    let glyph = row[1];
+    if (!isDay) {
+      if (glyph === 'sun') glyph = 'moon';
+      else if (glyph === 'partly') glyph = 'partly-night';
+    }
+    return { label: row[0], glyph, kind: row[2] };
+  }
+
+  function glyphSVG(name, cls = 'glyph') {
+    const id = GLYPH_ID[name] || GLYPH_ID.cloud;
+    return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#${id}"></use></svg>`;
+  }
+
+  const WIND_DIRS = ['北风', '东北风', '东风', '东南风', '南风', '西南风', '西风', '西北风'];
+  function windDir(deg) {
+    if (!Number.isFinite(deg)) return '—';
+    return WIND_DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+  }
+
+  function aqiLevel(pm25) {
+    if (!Number.isFinite(pm25)) return null;
+    if (pm25 <= 35) return { label: '优', color: '#3f8f5f', rank: 0 };
+    if (pm25 <= 75) return { label: '良', color: '#b58a1f', rank: 1 };
+    if (pm25 <= 115) return { label: '轻度污染', color: '#cf7a2c', rank: 2 };
+    if (pm25 <= 150) return { label: '中度污染', color: '#c14a35', rank: 3 };
+    if (pm25 <= 250) return { label: '重度污染', color: '#8b4a86', rank: 4 };
+    return { label: '严重污染', color: '#7a2f2f', rank: 5 };
+  }
+
+  function normalizeCity(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '').slice(0, 64);
+    const name = String(raw.name || '').slice(0, 24);
+    const lat = Number(raw.lat);
+    const lon = Number(raw.lon);
+    if (!id || !name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return {
+      id,
+      name,
+      short: String(raw.short || name).slice(0, 16),
+      region: String(raw.region || '自定义地点').slice(0, 32),
+      lat,
+      lon
+    };
+  }
+
+  function toCityFromGeo(result) {
+    if (!result || typeof result !== 'object') return null;
+    const name = String(result.name || '').slice(0, 24);
+    if (!name) return null;
+    const regionParts = [];
+    if (result.admin1) regionParts.push(String(result.admin1).slice(0, 20));
+    if (result.admin2 && result.admin2 !== result.admin1) regionParts.push(String(result.admin2).slice(0, 20));
+    if (result.country_code && result.country_code !== 'CN' && result.country) regionParts.push(String(result.country).slice(0, 20));
+    return normalizeCity({
+      id: `geo-${result.id}`,
+      name,
+      short: name,
+      region: regionParts.join(' · ') || '未知地区',
+      lat: result.latitude,
+      lon: result.longitude
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     DOM + state
+     --------------------------------------------------------------------- */
+  const el = {};
+  const state = {
+    cities: [],
+    data: new Map(),
+    hidden: new Set(),
+    loading: false,
+    fetchedAt: 0,
+    lastError: false,
+    phase: 'night',
+    firstCitiesRender: true,
+    chartAnimated: false,
+    chart: null,
+    geoResults: [],
+    geoQuery: '',
+    geoToken: 0
+  };
+
+  let refreshPromise = null;
+  let autoRetries = 0;
+
+  function cacheDom() {
+    el.sky = $('#sky');
+    el.headline = $('#headline');
+    el.insight = $('#insight');
+    el.solar = $('#solar');
+    el.cityRow = $('#city-row');
+    el.swipeHint = $('#swipe-hint');
+    el.clockTime = $('#clock-time');
+    el.clockDate = $('#clock-date');
+    el.refreshBtn = $('#refresh-btn');
+    el.addBtn = $('#add-btn');
+    el.banner = $('#banner');
+    el.bannerText = $('#banner-text');
+    el.bannerRetry = $('#banner-retry');
+    el.chartLegend = $('#chart-legend');
+    el.chartWrap = $('#chart-wrap');
+    el.chartLive = $('#chart-live');
+    el.compareTable = $('#compare-table');
+    el.weekGrid = $('#week-grid');
+    el.updatedAt = $('#updated-at');
+    el.dialog = $('#add-dialog');
+    el.dialogClose = $('#dialog-close');
+    el.search = $('#city-search');
+    el.quick = $('#quick-cities');
+    el.results = $('#city-results');
+    el.cityCount = $('#city-count');
+    el.resetCities = $('#reset-cities');
+    el.maxCities = $('#max-cities');
+    el.toast = $('#toast');
+    el.themeColor = $('meta[name="theme-color"]');
+  }
+
+  /* ---------------------------------------------------------------------
+     Persistence
+     --------------------------------------------------------------------- */
+  function loadCities() {
+    const known = new Map(PRESETS.map((c) => [c.id, c]));
+    const storedRaw = readJSON(safeGet(STORE_CITIES));
+    const storedList = Array.isArray(storedRaw) ? storedRaw : [];
+
+    for (const raw of storedList) {
+      const city = normalizeCity(raw);
+      if (city && !known.has(city.id)) known.set(city.id, city);
+    }
+
+    const params = new URLSearchParams(location.search);
+    const rawParam = params.get('cities');
+    let ids = null;
+    if (rawParam) ids = rawParam.split(',').map((s) => s.trim()).filter(Boolean);
+    else if (storedList.length) ids = storedList.map((c) => (typeof c === 'string' ? c : c && c.id)).filter(Boolean);
+    if (!ids || !ids.length) ids = DEFAULT_IDS.slice();
+
+    const picked = [];
+    for (const id of ids) {
+      const city = known.get(id);
+      if (city && !picked.some((c) => c.id === id) && picked.length < MAX_CITIES) picked.push(city);
+    }
+    if (!picked.length) {
+      for (const id of DEFAULT_IDS) {
+        const city = known.get(id);
+        if (city) picked.push(city);
+      }
+    }
+    return picked;
+  }
+
+  function persistCities() {
+    safeSet(STORE_CITIES, JSON.stringify(state.cities.map((c) => ({
+      id: c.id, name: c.name, short: c.short, region: c.region, lat: c.lat, lon: c.lon
+    }))));
+  }
+
+  function syncUrl() {
+    if (location.hostname === 'htmlpreview.github.io') return;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('cities', state.cities.map((c) => c.id).join(','));
+      history.replaceState(null, '', url);
+    } catch (e) { /* file:// and older browsers */ }
+  }
+
+  function loadCache() {
+    const payload = readJSON(safeGet(STORE_CACHE));
+    if (!payload || payload.v !== 2 || !payload.data || typeof payload.data !== 'object') return false;
+    let count = 0;
+    for (const [id, entry] of Object.entries(payload.data)) {
+      if (!entry || !entry.forecast || !entry.forecast.current || !entry.forecast.hourly || !entry.forecast.daily) continue;
+      state.data.set(id, entry);
+      count += 1;
+    }
+    state.fetchedAt = Number(payload.fetchedAt) || 0;
+    return count > 0;
+  }
+
+  function saveCache() {
+    const data = {};
+    for (const [id, entry] of state.data) {
+      data[id] = { forecast: entry.forecast, air: entry.air, fetchedAt: entry.fetchedAt };
+    }
+    safeSet(STORE_CACHE, JSON.stringify({ v: 2, fetchedAt: state.fetchedAt, data }));
+  }
+
+  /* ---------------------------------------------------------------------
+     Network
+     --------------------------------------------------------------------- */
+  async function fetchJSON(url, timeout = 12000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function forecastUrl(city) {
+    const params = new URLSearchParams(FORECAST_PARAMS);
+    params.set('latitude', String(city.lat));
+    params.set('longitude', String(city.lon));
+    return `${API.forecast}?${params.toString()}`;
+  }
+
+  function airUrl(city) {
+    const params = new URLSearchParams(AIR_PARAMS);
+    params.set('latitude', String(city.lat));
+    params.set('longitude', String(city.lon));
+    return `${API.air}?${params.toString()}`;
+  }
+
+  async function fetchCityData(city) {
+    const [forecast, air] = await Promise.all([
+      fetchJSON(forecastUrl(city)),
+      fetchJSON(airUrl(city), 9000).catch(() => null)
+    ]);
+    if (!forecast || !forecast.current || !forecast.hourly || !forecast.daily) {
+      throw new Error('Malformed forecast payload');
+    }
+    return { id: city.id, forecast, air, fetchedAt: Date.now() };
+  }
+
+  async function refresh() {
+    if (refreshPromise) return refreshPromise;
+    state.loading = true;
+    syncLoadingUI();
+    const idsAtStart = new Set(state.cities.map((c) => c.id));
+
+    refreshPromise = (async () => {
+      const results = await Promise.allSettled(
+        state.cities.map((city) => fetchCityData(city).then((data) => {
+          if (!idsAtStart.has(city.id)) throw new Error('City removed');
+          return data;
+        }))
+      );
+
+      let ok = 0;
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const entry = result.value;
+          if (state.cities.some((c) => c.id === entry.id)) {
+            state.data.set(entry.id, entry);
+            ok += 1;
+          }
+        }
+      }
+
+      if (ok > 0) {
+        state.fetchedAt = Date.now();
+        state.lastError = false;
+        saveCache();
+        if (ok < state.cities.length && autoRetries < 2) {
+          autoRetries += 1;
+          setTimeout(() => { if (!refreshPromise) refresh(); }, 20000);
+        }
+      } else {
+        state.lastError = true;
+      }
+      state.loading = false;
+      syncLoadingUI();
+      renderAll();
+      refreshPromise = null;
+      return ok;
+    })().catch(() => {
+      state.loading = false;
+      state.lastError = true;
+      syncLoadingUI();
+      renderAll();
+      refreshPromise = null;
+      return 0;
+    });
+
+    return refreshPromise;
+  }
+
+  function syncLoadingUI() {
+    if (!el.refreshBtn) return;
+    el.refreshBtn.classList.toggle('is-loading', state.loading);
+    el.refreshBtn.disabled = state.loading;
+    el.refreshBtn.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: hero
+     --------------------------------------------------------------------- */
+  function withDataItems() {
+    return state.cities
+      .map((city, index) => ({
+        city,
+        data: state.data.get(city.id) || null,
+        color: PALETTE[index % PALETTE.length]
+      }));
+  }
+
+  function loadedItems() {
+    return withDataItems().filter((item) => item.data && fitsPayload(item.data));
+  }
+
+  function fitsPayload(entry) {
+    return !!(entry && entry.forecast && entry.forecast.current && entry.forecast.daily);
+  }
+
+  function referenceCity() {
+    const beijing = state.cities.find((c) => c.id === 'beijing');
+    if (beijing) return beijing;
+    const loaded = state.cities.find((c) => state.data.has(c.id));
+    return loaded || state.cities[0] || null;
+  }
+
+  function headlineFor(items) {
+    if (!items.length) return '此刻，北京与薛城';
+    if (items.length === 1) {
+      const current = items[0].data.forecast.current;
+      const info = condition(current.weather_code, current.is_day === 1);
+      return `${items[0].city.short}，${info.label} ${fmtInt(current.temperature_2m)}°`;
+    }
+    const a = items[0];
+    const b = items[1];
+    const ta = a.data.forecast.current.temperature_2m;
+    const tb = b.data.forecast.current.temperature_2m;
+    const actual = ta - tb;
+    if (!Number.isFinite(actual) || Math.abs(actual) < 0.05) {
+      return `此刻，${a.city.short}与${b.city.short}气温相同`;
+    }
+    const shown = Math.abs(actual) >= 1 ? String(Math.round(Math.abs(actual))) : Math.abs(actual).toFixed(1);
+    return `此刻，${a.city.short}比${b.city.short}${actual > 0 ? '高' : '低'} ${shown}°`;
+  }
+
+  function nextHoursDelta(item, hours = 3) {
+    try {
+      const now = bjParts();
+      const forecast = item.data.forecast;
+      const times = forecast.hourly.time;
+      const temps = forecast.hourly.temperature_2m;
+      const key = `${now.date}T${pad2(now.hour)}`;
+      let start = times.findIndex((t) => t.slice(0, 13) === key);
+      if (start < 0) start = 0;
+      const a = temps[start];
+      const b = temps[start + hours];
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      return b - a;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function insightFor(items) {
+    const parts = [];
+
+    if (items.length >= 3) {
+      const ranked = [...items].sort((a, b) =>
+        b.data.forecast.current.temperature_2m - a.data.forecast.current.temperature_2m);
+      const warm = ranked[0];
+      const cold = ranked[ranked.length - 1];
+      parts.push(`最暖${warm.city.short} ${fmtInt(warm.data.forecast.current.temperature_2m)}°，最冷${cold.city.short} ${fmtInt(cold.data.forecast.current.temperature_2m)}°`);
+    }
+
+    for (const item of items) {
+      const current = item.data.forecast.current;
+      const info = condition(current.weather_code, current.is_day === 1);
+      if (info.kind === 'rain' || info.kind === 'thunder') {
+        parts.push(`${item.city.short}有${info.label}，出门带伞`);
+        break;
+      }
+      if (info.kind === 'snow' || info.kind === 'sleet') {
+        parts.push(`${item.city.short}有${info.label}，注意保暖`);
+        break;
+      }
+    }
+
+    if (parts.length < 2) {
+      const delta = nextHoursDelta(items[0]);
+      if (delta !== null && Math.abs(delta) >= 1.5) {
+        const sameCity = parts.some((part) => part.startsWith(items[0].city.short));
+        parts.push(`${sameCity ? '' : `${items[0].city.short}`}未来 3 小时${delta > 0 ? '升温' : '降温'} ${fmt1(Math.abs(delta)).replace('.0', '')}°`);
+      }
+    }
+
+    if (parts.length < 2) {
+      let worst = null;
+      for (const item of items) {
+        const air = item.data.air && item.data.air.current;
+        if (!air || !Number.isFinite(air.pm2_5)) continue;
+        const level = aqiLevel(air.pm2_5);
+        if (level && level.rank >= 3 && (!worst || level.rank > worst.level.rank)) {
+          worst = { item, level };
+        }
+      }
+      if (worst) parts.push(`${worst.item.city.short}空气${worst.level.label}，减少户外活动`);
+    }
+
+    if (!parts.length) parts.push('各城天气平稳，适合出门');
+    return `${parts.slice(0, 2).join('；')}。`;
+  }
+
+  function addTileHTML() {
+    const full = state.cities.length >= MAX_CITIES;
+    return `
+      <button type="button" class="add-city" data-action="add"${full ? ' disabled' : ''}>
+        <span class="add-city-plus" aria-hidden="true">
+          <svg class="ui-icon" viewBox="0 0 24 24"><use href="#i-plus"></use></svg>
+        </span>
+        <span class="add-city-text">${full ? `已达 ${MAX_CITIES} 座上限` : '添加城市'}
+          <small>${full ? '移除一座后可继续添加' : '搜索更多城市，横向对照'}</small>
+        </span>
+      </button>`;
+  }
+
+  function cityColumnHTML(item, index) {
+    const { city, data, color } = item;
+    const removeButton = `
+      <button type="button" class="city-remove" data-remove="${esc(city.id)}" aria-label="移除${esc(city.name)}">
+        <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>`;
+
+    const head = `
+      <p class="city-region"><span class="city-dot" style="--dot:${color}" aria-hidden="true"></span>${esc(city.region)}</p>
+      <p class="city-name">${esc(city.name)}</p>`;
+
+    if (!data || !data.forecast || !data.forecast.current) {
+      return `
+        <article class="city city--empty" style="--dot:${color};--i:${index}">
+          ${removeButton}
+          ${head}
+          <div class="city-temp-line">
+            <p class="city-temp">—</p>
+          </div>
+          <p class="city-meta">数据尚未到达，稍后会自动重试。</p>
+        </article>`;
+    }
+
+    const current = data.forecast.current;
+    const daily = data.forecast.daily;
+    const info = condition(current.weather_code, current.is_day === 1);
+    const air = data.air && data.air.current;
+    const level = air ? aqiLevel(air.pm2_5) : null;
+    const todayMax = daily.temperature_2m_max ? daily.temperature_2m_max[0] : null;
+    const todayMin = daily.temperature_2m_min ? daily.temperature_2m_min[0] : null;
+
+    return `
+      <article class="city" style="--dot:${color};--i:${index}">
+        ${removeButton}
+        ${head}
+        <div class="city-temp-line">
+          <p class="city-temp" aria-label="${fmtInt(current.temperature_2m)} 摄氏度">
+            ${fmtInt(current.temperature_2m)}<span class="city-unit" aria-hidden="true">°</span>
+          </p>
+          <p class="city-cond">${glyphSVG(info.glyph)}<span>${info.label}</span></p>
+        </div>
+        <p class="city-meta">体感 ${fmtTemp(current.apparent_temperature)} · 今日 <b>${fmtTemp(todayMax)}</b> / ${fmtTemp(todayMin)}</p>
+        ${level ? `<p class="city-aqi"><span class="aqi-dot" style="--aqi:${level.color}" aria-hidden="true"></span>空气${level.label} · PM2.5 ${fmtInt(air.pm2_5)}</p>` : ''}
+      </article>`;
+  }
+
+  function renderSky() {
+    const items = withDataItems();
+    el.sky.dataset.phase = state.phase;
+    if (!loadedItems().length) {
+      renderError();
+      return;
+    }
+
+    el.headline.textContent = headlineFor(loadedItems());
+    el.insight.textContent = insightFor(loadedItems());
+    el.cityRow.dataset.count = String(items.length);
+    el.cityRow.innerHTML = items.map(cityColumnHTML).join('') + addTileHTML();
+
+    if (state.firstCitiesRender) {
+      el.cityRow.classList.add('city-row--first');
+      state.firstCitiesRender = false;
+      setTimeout(() => el.cityRow.classList.remove('city-row--first'), 1600);
+    }
+
+    updateSwipeHint();
+    renderSolar();
+  }
+
+  function updateSwipeHint() {
+    if (!el.swipeHint || !el.cityRow) return;
+    const scrollable = el.cityRow.scrollWidth > el.cityRow.clientWidth + 4;
+    el.cityRow.classList.toggle('is-scrollable', scrollable);
+    const atEnd = scrollable && el.cityRow.scrollLeft + el.cityRow.clientWidth >= el.cityRow.scrollWidth - 4;
+    el.cityRow.classList.toggle('is-end', atEnd);
+    el.swipeHint.hidden = !scrollable;
+    if (scrollable) {
+      const overflow = el.cityRow.scrollWidth - el.cityRow.clientWidth;
+      el.swipeHint.textContent = overflow > 120 ? '横向滚动，比较全部城市 →' : '横向滚动查看全部城市 →';
+    }
+  }
+
+  function renderSkeleton() {
+    el.headline.textContent = '正在获取此刻的天气';
+    el.insight.textContent = '连接气象数据源…';
+    el.solar.hidden = true;
+    el.solar.innerHTML = '';
+    const cards = state.cities.map((city, index) => `
+      <div class="city" style="--i:${index}">
+        <p class="city-region"><span class="city-dot" style="--dot:${PALETTE[index % PALETTE.length]}" aria-hidden="true"></span>${esc(city.region)}</p>
+        <p class="city-name">${esc(city.name)}</p>
+        <div class="city-temp-line"><p class="city-temp" style="opacity:.25">--</p></div>
+        <p class="city-meta" style="opacity:.5">正在获取实时数据…</p>
+      </div>`).join('');
+    el.cityRow.dataset.count = String(state.cities.length);
+    el.cityRow.innerHTML = cards + addTileHTML();
+    el.chartLegend.innerHTML = '';
+    el.chartWrap.innerHTML = '<div class="chart-skeleton" aria-hidden="true"></div>';
+    el.compareTable.innerHTML = '<div class="line-skeleton" aria-hidden="true"></div><div class="line-skeleton" aria-hidden="true"></div><div class="line-skeleton" aria-hidden="true"></div><div class="line-skeleton" aria-hidden="true"></div>';
+    el.weekGrid.innerHTML = '<div class="line-skeleton" aria-hidden="true"></div><div class="line-skeleton" aria-hidden="true"></div>';
+    updateSwipeHint();
+  }
+
+  function renderError() {
+    el.headline.textContent = '此刻，北京与薛城';
+    el.insight.textContent = '天气数据暂时没有到站，检查网络后可以重试。';
+    el.solar.hidden = true;
+    el.solar.innerHTML = '';
+    el.cityRow.dataset.count = String(state.cities.length);
+    el.cityRow.innerHTML = state.cities.map((city, index) => `
+      <article class="city city--empty" style="--dot:${PALETTE[index % PALETTE.length]};--i:${index}">
+        <p class="city-region"><span class="city-dot" aria-hidden="true"></span>${esc(city.region)}</p>
+        <p class="city-name">${esc(city.name)}</p>
+        <div class="city-temp-line"><p class="city-temp">—</p></div>
+        <p class="city-meta">暂未取到数据。</p>
+      </article>`).join('') + addTileHTML();
+    el.chartLegend.innerHTML = '';
+    el.chartWrap.innerHTML = '<p class="empty-state">暂时无法获取逐时数据。</p>';
+    el.compareTable.innerHTML = '<p class="empty-state">暂时无法获取对照数据。</p>';
+    el.weekGrid.innerHTML = '<p class="empty-state">暂时无法获取七日预报。</p>';
+    updateSwipeHint();
+  }
+
+  /* ---------------------------------------------------------------------
+     Solar arc
+     --------------------------------------------------------------------- */
+  function renderSolar() {
+    const ref = referenceCity();
+    const entry = ref ? state.data.get(ref.id) : null;
+    if (!entry || !fitsPayload(entry)) {
+      el.solar.hidden = true;
+      el.solar.innerHTML = '';
+      return;
+    }
+
+    el.solar.hidden = false;
+    const daily = entry.forecast.daily;
+    const now = bjParts();
+    const rise = minutesOf(daily.sunrise && daily.sunrise[0]);
+    const set = minutesOf(daily.sunset && daily.sunset[0]);
+    const tomorrowRise = daily.sunrise && daily.sunrise[1] ? minutesOf(daily.sunrise[1]) : null;
+    const hasTimes = rise !== null && set !== null && set > rise;
+    const isDaytime = hasTimes && now.minutes >= rise && now.minutes <= set;
+
+    const W = 360;
+    const H = 134;
+    const P0 = { x: 26, y: 112 };
+    const P1 = { x: 180, y: 12 };
+    const P2 = { x: 334, y: 112 };
+    const pointAt = (t) => {
+      const u = 1 - t;
+      return {
+        x: u * u * P0.x + 2 * u * t * P1.x + t * t * P2.x,
+        y: u * u * P0.y + 2 * u * t * P1.y + t * t * P2.y
+      };
+    };
+
+    let disc = '';
+    if (isDaytime) {
+      const t = clamp((now.minutes - rise) / (set - rise), 0.02, 0.98);
+      const p = pointAt(t);
+      disc = `<circle class="solar-disc" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8.5"/>`;
+    } else {
+      disc = `<g class="solar-moon" transform="translate(162 6) scale(1.1)"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></g>`;
+    }
+
+    let note = '';
+    let ariaNote = '';
+    if (!hasTimes) {
+      note = '日照时间暂不可用';
+      ariaNote = note;
+    } else if (isDaytime) {
+      const dayLen = set - rise;
+      const pct = clamp(Math.round(((now.minutes - rise) / dayLen) * 100), 0, 99);
+      note = `今日白昼 ${fmtDuration(dayLen)} · 已过 ${pct}%`;
+      ariaNote = note;
+    } else {
+      let nextRise = null;
+      let label = '日出';
+      if (now.minutes < rise) {
+        nextRise = rise;
+        label = '今日日出';
+      } else if (tomorrowRise !== null) {
+        nextRise = 1440 + tomorrowRise;
+        label = '明日日出';
+      }
+      if (nextRise !== null) {
+        const remain = nextRise - now.minutes;
+        note = `夜间 · 距${label} ${fmtDuration(remain)}`;
+        ariaNote = note;
+      } else {
+        note = '夜间';
+        ariaNote = note;
+      }
+    }
+
+    el.solar.innerHTML = `
+      <p class="solar-title">${esc(ref.short)} · 今日日照</p>
+      <svg viewBox="0 0 ${W} ${H}" aria-hidden="true">
+        <path class="solar-horizon" d="M12 ${P0.y}H${W - 12}"/>
+        <path class="solar-arc" d="M${P0.x} ${P0.y}Q${P1.x} ${P1.y} ${P2.x} ${P2.y}"/>
+        <path class="solar-tick" d="M${P0.x} ${P0.y - 5}v5M${P2.x} ${P0.y - 5}v5"/>
+        ${disc}
+      </svg>
+      <div class="solar-cap"><span>日出 ${hhmm(daily.sunrise && daily.sunrise[0])}</span><span>日落 ${hhmm(daily.sunset && daily.sunset[0])}</span></div>
+      <p class="solar-note">${note}</p>`;
+    el.solar.setAttribute('aria-label', `${ref.name}今日日出 ${hhmm(daily.sunrise && daily.sunrise[0])}，日落 ${hhmm(daily.sunset && daily.sunset[0])}。${ariaNote}。`);
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: chart
+     --------------------------------------------------------------------- */
+  function chartSeries() {
+    const now = bjParts();
+    const key = `${now.date}T${pad2(now.hour)}`;
+    const series = [];
+
+    state.cities.forEach((city, index) => {
+      const entry = state.data.get(city.id);
+      if (!entry || !fitsPayload(entry)) return;
+      const hourly = entry.forecast.hourly;
+      if (!Array.isArray(hourly.time) || !Array.isArray(hourly.temperature_2m)) return;
+      let start = hourly.time.findIndex((t) => t.slice(0, 13) === key);
+      if (start < 0) start = 0;
+      const points = [];
+      for (let k = 0; k < 24 && start + k < hourly.time.length; k += 1) {
+        const temp = hourly.temperature_2m[start + k];
+        if (!Number.isFinite(temp)) continue;
+        points.push({
+          time: hourly.time[start + k],
+          temp,
+          code: Array.isArray(hourly.weather_code) ? hourly.weather_code[start + k] : 2
+        });
+      }
+      if (points.length < 2) return;
+      series.push({ city, color: PALETTE[index % PALETTE.length], points });
+    });
+    return series;
+  }
+
+  const WEEKDAY_HOUR_LABEL = (iso) => `${Number(iso.slice(11, 13))}时`;
+
+  function renderChart(animate) {
+    if (!el.chartWrap) return;
+    const allSeries = chartSeries();
+    renderLegend(allSeries);
+
+    const visible = allSeries.filter((s) => !state.hidden.has(s.city.id));
+    if (!visible.length) {
+      el.chartWrap.innerHTML = '<p class="empty-state">已隐藏全部城市，点击上方图例即可恢复显示。</p>';
+      state.chart = null;
+      return;
+    }
+
+    const W = Math.max(300, Math.floor(el.chartWrap.clientWidth || 900));
+    const H = W < 560 ? 258 : 328;
+    const margin = { top: 22, right: 16, bottom: 36, left: W < 560 ? 38 : 46 };
+    const plotW = W - margin.left - margin.right;
+    const plotH = H - margin.top - margin.bottom;
+    const count = Math.max(...visible.map((s) => s.points.length));
+
+    const temps = visible.flatMap((s) => s.points.map((p) => p.temp));
+    let lo = Math.floor((Math.min(...temps) - 2) / 5) * 5;
+    let hi = Math.ceil((Math.max(...temps) + 2) / 5) * 5;
+    if (hi - lo < 10) { hi += 5; lo -= 5; }
+
+    const step = hi - lo > 45 ? 10 : 5;
+    const ticks = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+
+    const xAt = (i) => margin.left + (plotW * i) / (count - 1);
+    const yAt = (v) => margin.top + plotH - ((v - lo) / (hi - lo)) * plotH;
+
+    const axisParts = [];
+    for (const v of ticks) {
+      const y = yAt(v);
+      const zero = v === 0;
+      axisParts.push(`<line class="axis-line${zero ? ' axis-line--zero' : ''}" x1="${margin.left}" x2="${W - margin.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`);
+      axisParts.push(`<text class="${zero ? 'axis-label--zero' : ''}" x="${margin.left - 9}" y="${(y + 4).toFixed(1)}" text-anchor="end">${v}°</text>`);
+    }
+
+    const baseTimes = visible[0].points;
+    const xParts = [];
+    const dayParts = [];
+    for (let i = 0; i < count; i += 1) {
+      const time = baseTimes[i] && baseTimes[i].time;
+      if (!time) continue;
+      const hour = Number(time.slice(11, 13));
+      const x = xAt(i);
+      if (i === 0) {
+        xParts.push(`<text x="${margin.left}" y="${H - 12}" text-anchor="start">现在</text>`);
+      } else if (hour % 3 === 0 && i >= 3) {
+        xParts.push(`<text x="${x.toFixed(1)}" y="${H - 12}" text-anchor="middle">${WEEKDAY_HOUR_LABEL(time)}</text>`);
+      }
+      if (hour === 0 && i > 0) {
+        dayParts.push(`<line class="day-line" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${margin.top}" y2="${margin.top + plotH}"/>`);
+        dayParts.push(`<text class="day-label" x="${(x + 5).toFixed(1)}" y="${margin.top - 6}">${Number(time.slice(5, 7))}月${Number(time.slice(8, 10))}日</text>`);
+      }
+    }
+
+    const seriesParts = visible.map((s) => {
+      const d = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)} ${yAt(p.temp).toFixed(1)}`).join(' ');
+      return `<path class="series-path" data-series="${esc(s.city.id)}" d="${d}" stroke="${s.color}" aria-hidden="true"/>`;
+    });
+
+    const cursorDots = visible.map((s) => `<circle class="cursor-dot" r="3.8" fill="${s.color}" data-dot="${esc(s.city.id)}" cx="0" cy="0"/>`).join('');
+    const names = visible.map((s) => s.city.short).join('、');
+
+    el.chartWrap.innerHTML = `
+      <svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="group" tabindex="0"
+        aria-label="未来二十四小时气温折线图：${esc(names)}。使用左右方向键或触摸逐小时查看。">
+        ${axisParts.join('')}
+        ${dayParts.join('')}
+        ${xParts.join('')}
+        ${seriesParts.join('')}
+        <g class="cursor-group" aria-hidden="true">
+          <line class="cursor-line" x1="0" x2="0" y1="${margin.top}" y2="${margin.top + plotH}"/>
+          ${cursorDots}
+        </g>
+      </svg>
+      <div class="chart-tip" id="chart-tip" aria-hidden="true"></div>`;
+
+    const svg = $('.chart', el.chartWrap);
+    const paths = Array.from(svg.querySelectorAll('.series-path'));
+    if (animate) {
+      requestAnimationFrame(() => {
+        paths.forEach((path, index) => {
+          let length = 0;
+          try { length = path.getTotalLength(); } catch (e) { length = 0; }
+          if (!length) return;
+          path.style.strokeDasharray = String(length);
+          path.style.strokeDashoffset = String(length);
+          path.style.setProperty('--len', String(length));
+          path.style.animationDelay = `${index * 90}ms`;
+          path.classList.add('is-drawing');
+        });
+      });
+    }
+
+    state.chart = {
+      W, H, margin, plotW, plotH, count, xAt, yAt,
+      series: visible,
+      svg,
+      tip: $('#chart-tip', el.chartWrap),
+      cursorLine: $('.cursor-line', svg),
+      dots: new Map(Array.from(svg.querySelectorAll('[data-dot]')).map((dot) => [dot.dataset.dot, dot])),
+      index: null
+    };
+  }
+
+  function renderLegend(series) {
+    if (!el.chartLegend) return;
+    if (!series.length) {
+      el.chartLegend.innerHTML = '';
+      return;
+    }
+    el.chartLegend.innerHTML = series.map((s) => {
+      const pressed = !state.hidden.has(s.city.id);
+      const entry = state.data.get(s.city.id);
+      const current = entry && entry.forecast && entry.forecast.current
+        ? entry.forecast.current.temperature_2m
+        : s.points[0].temp;
+      return `<button type="button" class="legend-btn" data-legend="${esc(s.city.id)}" aria-pressed="${pressed}" style="--c:${s.color}">
+        <span class="legend-dot" aria-hidden="true"></span>
+        <span>${esc(s.city.short)}</span>
+        <span class="legend-temp">${fmtInt(current)}°</span>
+      </button>`;
+    }).join('');
+  }
+
+  function showChartIndex(index, announce) {
+    const chart = state.chart;
+    if (!chart) return;
+    const clamped = clamp(index, 0, chart.count - 1);
+    chart.index = clamped;
+    const x = chart.xAt(clamped);
+    const active = chart.svg.classList.contains('is-active');
+    if (!active) chart.svg.classList.add('is-active');
+    chart.cursorLine.setAttribute('x1', String(x));
+    chart.cursorLine.setAttribute('x2', String(x));
+
+    let topPoint = Infinity;
+    const rows = [];
+    for (const series of chart.series) {
+      const point = series.points[clamped];
+      const dot = chart.dots.get(series.city.id);
+      if (!point) {
+        if (dot) dot.style.opacity = '0';
+        continue;
+      }
+      const y = chart.yAt(point.temp);
+      topPoint = Math.min(topPoint, y);
+      if (dot) {
+        dot.setAttribute('cx', String(x));
+        dot.setAttribute('cy', String(y));
+        dot.style.opacity = '1';
+      }
+      rows.push({
+        name: series.city.short,
+        color: series.color,
+        temp: point.temp,
+        label: condition(point.code, true).label,
+        time: point.time
+      });
+    }
+
+    if (!rows.length) return;
+    const first = rows[0];
+    const tip = chart.tip;
+    const rowsHTML = rows.map((row) => `
+      <div class="tip-row">
+        <span class="tip-dot" style="--c:${row.color}"></span>
+        <span class="tip-name">${esc(row.name)}</span>
+        <span class="tip-val">${fmtTemp(row.temp)}</span>
+        <span class="tip-cond">${esc(row.label)}</span>
+      </div>`).join('');
+    tip.innerHTML = `<div class="tip-time">${rows[0].time.slice(11, 13)}时 · ${Number(rows[0].time.slice(5, 7))}月${Number(rows[0].time.slice(8, 10))}日</div>${rowsHTML}`;
+    tip.classList.add('is-on');
+
+    const tipH = 44 + rows.length * 20;
+    let top = Math.min(topPoint + 16, chart.H - tipH - 6);
+    top = Math.max(6, top);
+    tip.style.top = `${top}px`;
+    tip.style.left = `${clamp(x, 100, chart.W - 100)}px`;
+
+    if (announce) {
+      el.chartLive.textContent = `${first.time.slice(11, 13)}时，${rows.map((r) => `${r.name} ${fmtTemp(r.temp)}`).join('，')}。`;
+    }
+  }
+
+  function hideChartCursor() {
+    const chart = state.chart;
+    if (!chart) return;
+    chart.svg.classList.remove('is-active');
+    if (chart.tip) chart.tip.classList.remove('is-on');
+    chart.dots.forEach((dot) => { dot.style.opacity = '0'; });
+    chart.index = null;
+  }
+
+  function chartPointerIndex(clientX) {
+    const chart = state.chart;
+    if (!chart) return null;
+    const rect = el.chartWrap.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const ratio = (x - chart.margin.left) / (chart.plotW / (chart.count - 1));
+    return Math.round(clamp(ratio, 0, chart.count - 1));
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: comparison table
+     --------------------------------------------------------------------- */
+  function renderCompare() {
+    const items = withDataItems().filter((item) => fitsPayload(item.data));
+    if (!items.length) {
+      el.compareTable.innerHTML = '<p class="empty-state">暂时无法获取对照数据。</p>';
+      return;
+    }
+
+    const rows = [
+      {
+        label: '天气',
+        value: (d) => {
+          const info = condition(d.forecast.current.weather_code, d.forecast.current.is_day === 1);
+          return `<span class="cell-cond">${glyphSVG(info.glyph)}<span>${info.label}</span></span>`;
+        }
+      },
+      { label: '气温', value: (d) => fmtTemp(d.forecast.current.temperature_2m) },
+      { label: '体感', value: (d) => fmtTemp(d.forecast.current.apparent_temperature) },
+      {
+        label: '今日最高 / 最低',
+        value: (d) => `${fmtTemp(d.forecast.daily.temperature_2m_max[0])} / ${fmtTemp(d.forecast.daily.temperature_2m_min[0])}`
+      },
+      { label: '相对湿度', value: (d) => `${fmtInt(d.forecast.current.relative_humidity_2m)}%` },
+      {
+        label: '风',
+        value: (d) => `${windDir(d.forecast.current.wind_direction_10m)} ${fmt1(d.forecast.current.wind_speed_10m)} km/h`
+      },
+      { label: '阵风', value: (d) => `${fmt1(d.forecast.current.wind_gusts_10m)} km/h` },
+      {
+        label: '降水 / 概率',
+        value: (d) => {
+          const prob = d.forecast.daily.precipitation_probability_max;
+          return `${fmt1(d.forecast.current.precipitation)} mm <span class="cell-sub">${Number.isFinite(prob && prob[0]) ? prob[0] : '—'}%</span>`;
+        }
+      },
+      { label: '云量', value: (d) => `${fmtInt(d.forecast.current.cloud_cover)}%` },
+      { label: '气压', value: (d) => `${fmt1(d.forecast.current.pressure_msl)} hPa` },
+      {
+        label: '能见度',
+        value: (d) => (Number.isFinite(d.forecast.current.visibility) ? `${fmt1(d.forecast.current.visibility / 1000)} km` : '—')
+      },
+      {
+        label: '紫外线（今日最大）',
+        value: (d) => fmt1(d.forecast.daily.uv_index_max && d.forecast.daily.uv_index_max[0])
+      },
+      {
+        label: '空气质量',
+        value: (d) => {
+          const air = d.air && d.air.current;
+          const level = air ? aqiLevel(air.pm2_5) : null;
+          if (!level) return '<span class="cell-sub">—</span>';
+          return `<span class="cell-aqi"><span class="aqi-dot" style="--aqi:${level.color}" aria-hidden="true"></span>${level.label} <span class="cell-sub">PM2.5 ${fmtInt(air.pm2_5)}</span></span>`;
+        }
+      },
+      {
+        label: '日出 / 日落',
+        value: (d) => `${hhmm(d.forecast.daily.sunrise && d.forecast.daily.sunrise[0])} / ${hhmm(d.forecast.daily.sunset && d.forecast.daily.sunset[0])}`
+      }
+    ];
+
+    const head = items.map((item) => `
+      <th scope="col"><span class="th-city"><span class="dot" style="--c:${item.color}" aria-hidden="true"></span>${esc(item.city.short)}</span></th>`).join('');
+
+    const body = rows.map((row) => `
+      <tr>
+        <th scope="row">${row.label}</th>
+        ${items.map((item) => `<td>${row.value(item.data)}</td>`).join('')}
+      </tr>`).join('');
+
+    el.compareTable.innerHTML = `
+      <table class="compare" style="--city-count:${items.length}">
+        <caption class="sr-only">各城市当前天气逐项对照</caption>
+        <thead><tr><th scope="col" class="row-label">指标</th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>`;
+  }
+
+  /* ---------------------------------------------------------------------
+     Rendering: seven day
+     --------------------------------------------------------------------- */
+  function renderWeek() {
+    const items = withDataItems().filter((item) => fitsPayload(item.data) && item.data.forecast.daily.time);
+    if (!items.length) {
+      el.weekGrid.innerHTML = '<p class="empty-state">暂时无法获取七日预报。</p>';
+      return;
+    }
+
+    const days = items[0].data.forecast.daily.time;
+    const today = bjParts().date;
+
+    const head = days.map((iso, index) => {
+      const weekday = index === 0 && iso === today ? '今天' : WEEK_FMT.format(new Date(`${iso}T12:00:00+08:00`));
+      const md = `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
+      return `<th scope="col" class="week-head${iso === today ? ' is-today' : ''}"><span>${weekday}</span><span class="wk-date">${md}</span></th>`;
+    }).join('');
+
+    const body = items.map((item) => {
+      const daily = item.data.forecast.daily;
+      const cells = days.map((iso, index) => {
+        const code = daily.weather_code[index];
+        const info = condition(code, true);
+        const high = daily.temperature_2m_max[index];
+        const low = daily.temperature_2m_min[index];
+        return `<td>
+          <div class="week-cell">
+            ${glyphSVG(info.glyph)}
+            <span class="hi">${fmtInt(high)}°</span>
+            <span class="lo">${fmtInt(low)}°</span>
+          </div>
+        </td>`;
+      }).join('');
+      return `<tr>
+        <th scope="row"><span class="week-city"><span class="dot" style="--c:${item.color}" aria-hidden="true"></span>${esc(item.city.short)}</span></th>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    el.weekGrid.innerHTML = `
+      <table class="week-table">
+        <caption class="sr-only">未来七日各城市最高与最低气温</caption>
+        <thead><tr><th scope="col" class="week-corner">城市</th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>`;
+  }
+
+  /* ---------------------------------------------------------------------
+     Render orchestration
+     --------------------------------------------------------------------- */
+  function renderAll() {
+    const hasAny = loadedItems().length > 0;
+    applyPhase(computePhase());
+
+    if (hasAny) {
+      renderSky();
+      renderChart(!state.chartAnimated);
+      state.chartAnimated = true;
+      renderCompare();
+      renderWeek();
+    } else if (state.loading || !state.lastError) {
+      renderSkeleton();
+    } else {
+      renderError();
+    }
+
+    updateBanner();
+    updateUpdatedMeta();
+  }
+
+  function applyPhase(phase) {
+    if (!el.sky) return;
+    if (state.phase !== phase) {
+      state.phase = phase;
+      el.sky.dataset.phase = phase;
+      if (el.themeColor && SKY_THEMES[phase]) el.themeColor.setAttribute('content', SKY_THEMES[phase]);
+    } else {
+      el.sky.dataset.phase = phase;
+    }
+    if (loadedItems().length) renderSolar();
+  }
+
+  function updateBanner() {
+    if (!el.banner) return;
+    if (state.lastError && state.fetchedAt) {
+      el.bannerText.textContent = `网络连接不稳定，当前显示 ${timeHM(state.fetchedAt)} 的缓存数据。`;
+      el.banner.hidden = false;
+    } else if (state.lastError && !state.fetchedAt) {
+      el.bannerText.textContent = '天气数据暂时获取失败，请检查网络后重试。';
+      el.banner.hidden = false;
+    } else {
+      el.banner.hidden = true;
+    }
+  }
+
+  function updateUpdatedMeta() {
+    if (!el.updatedAt) return;
+    if (!state.fetchedAt) {
+      el.updatedAt.textContent = '—';
+      return;
+    }
+    const minutes = Math.floor((Date.now() - state.fetchedAt) / 60000);
+    const rel = minutes <= 0 ? '刚刚' : `${minutes} 分钟前`;
+    el.updatedAt.textContent = `${timeHM(state.fetchedAt)}（${rel}）`;
+  }
+
+  /* ---------------------------------------------------------------------
+     Clock + phase loop
+     --------------------------------------------------------------------- */
+  let lastDateLabel = '';
+  let lastMinute = -1;
+
+  function tickClock() {
+    const now = new Date();
+    el.clockTime.textContent = SEC_FMT.format(now);
+    el.clockTime.setAttribute('datetime', now.toISOString());
+
+    const dateLabel = DATE_FMT.format(now).replace('星期', ' 星期');
+    if (dateLabel !== lastDateLabel) {
+      el.clockDate.textContent = dateLabel;
+      lastDateLabel = dateLabel;
+    }
+
+    const minute = now.getMinutes();
+    if (minute !== lastMinute) {
+      lastMinute = minute;
+      applyPhase(computePhase());
+      updateUpdatedMeta();
+    }
+  }
+
+  /* ---------------------------------------------------------------------
+     Add / remove cities
+     --------------------------------------------------------------------- */
+  let toastTimer = 0;
+  function toast(message) {
+    el.toast.textContent = message;
+    el.toast.classList.add('is-on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('is-on'), 2600);
+  }
+
+  function openDialog() {
+    if (!el.dialog || el.dialog.open) return;
+    el.search.value = '';
+    state.geoResults = [];
+    state.geoQuery = '';
+    el.search.disabled = false;
+    renderQuick();
+    renderResults('');
+    el.cityCount.textContent = `已添加 ${state.cities.length} 座`;
+    if (typeof el.dialog.showModal === 'function') el.dialog.showModal();
+    else el.dialog.setAttribute('open', '');
+    setTimeout(() => el.search.focus(), 30);
+  }
+
+  function closeDialog() {
+    if (!el.dialog) return;
+    if (typeof el.dialog.close === 'function') el.dialog.close();
+    else el.dialog.removeAttribute('open');
+  }
+
+  function renderQuick() {
+    const remaining = MAX_CITIES - state.cities.length;
+    el.quick.innerHTML = QUICK_IDS.map((id) => {
+      const city = PRESETS.find((c) => c.id === id);
+      if (!city) return '';
+      const added = state.cities.some((c) => c.id === id);
+      const disabled = added || remaining <= 0;
+      return `<button type="button" class="chip" data-quick="${esc(city.id)}"${disabled ? ' disabled' : ''}>${esc(city.name)}</button>`;
+    }).join('');
+  }
+
+  function cityRowHTML(city, key) {
+    const added = state.cities.some((c) => c.id === city.id);
+    const full = state.cities.length >= MAX_CITIES && !added;
+    const disabled = added || full;
+    let note = '添加';
+    if (added) note = '已添加';
+    else if (full) note = '已达上限';
+    return `<button type="button" class="result-row" data-result="${esc(key)}"${disabled ? ' disabled' : ''}>
+      <span class="result-main">
+        <span class="result-name">${esc(city.name)}</span>
+        <span class="result-region">${esc(city.region)}</span>
+      </span>
+      <span class="result-add">${note}</span>
+    </button>`;
+  }
+
+  function renderResults(query, options = {}) {
+    if (!el.results) return;
+    const q = String(query || '').trim();
+    const rows = [];
+    dialogCityMap = new Map();
+
+    if (q) {
+      const local = PRESETS.filter((city) => {
+        const haystack = `${city.name}${city.short}${city.region}`;
+        return haystack.includes(q);
+      }).slice(0, MAX_RESULTS);
+      for (const city of local) {
+        const key = `p:${city.id}`;
+        rows.push(cityRowHTML(city, key));
+        dialogCityMap.set(key, city);
+      }
+    }
+
+    if (state.geoResults.length) {
+      for (const city of state.geoResults) {
+        if (state.cities.some((c) => c.id === city.id)) continue;
+        const key = `g:${city.id}`;
+        rows.push(cityRowHTML(city, key));
+        dialogCityMap.set(key, city);
+      }
+    }
+
+    if (!q) {
+      el.results.innerHTML = '<p class="result-hint">输入城市名称搜索，或从上方热门城市中添加。数据来自 Open-Meteo 地名库。</p>';
+      return;
+    }
+
+    if (!rows.length) {
+      const searching = options.searching;
+      el.results.innerHTML = `<p class="result-status">${searching ? '正在搜索更多地点…' : `没有找到「${esc(q)}」，换个名称试试，或输入上一级城市名。`}</p>`;
+      return;
+    }
+
+    const status = options.searching ? '<p class="result-status">正在搜索更多地点…</p>' : '';
+    el.results.innerHTML = rows.join('') + status;
+  }
+
+  let dialogCityMap = new Map();
+  let searchTimer = 0;
+
+  function onSearchInput() {
+    const query = el.search.value.trim();
+    state.geoQuery = query;
+    state.geoResults = [];
+    const token = ++state.geoToken;
+    renderResults(query);
+    clearTimeout(searchTimer);
+    if (!query) return;
+
+    searchTimer = setTimeout(async () => {
+      const currentToken = token;
+      renderResults(query, { searching: true });
+      try {
+        const params = new URLSearchParams({ name: query, count: '8', language: 'zh', format: 'json' });
+        const payload = await fetchJSON(`${API.geo}?${params.toString()}`, 8000);
+        if (currentToken !== state.geoToken || query !== state.geoQuery) return;
+        const seen = new Set();
+        const results = [];
+        for (const raw of (payload && payload.results) || []) {
+          const city = toCityFromGeo(raw);
+          if (!city) continue;
+          const dedupe = `${city.name}|${city.lat.toFixed(2)}|${city.lon.toFixed(2)}`;
+          if (seen.has(dedupe)) continue;
+          if (PRESETS.some((preset) => preset.name === city.name)) continue;
+          seen.add(dedupe);
+          results.push(city);
+          if (results.length >= 6) break;
+        }
+        state.geoResults = results;
+        renderResults(query);
+      } catch (e) {
+        if (currentToken !== state.geoToken) return;
+        renderResults(query);
+      }
+    }, 280);
+  }
+
+  async function addCity(city) {
+    if (!city) return;
+    if (state.cities.length >= MAX_CITIES) {
+      toast(`最多同时对照 ${MAX_CITIES} 座城市`);
+      return;
+    }
+    if (state.cities.some((c) => c.id === city.id)) {
+      toast(`${city.name} 已经在对照列表中`);
+      return;
+    }
+
+    state.cities.push(city);
+    persistCities();
+    syncUrl();
+    closeDialog();
+    toast(`已添加${city.name}`);
+    renderAll();
+
+    state.loading = true;
+    syncLoadingUI();
+    try {
+      const entry = await fetchCityData(city);
+      if (!state.cities.some((c) => c.id === city.id)) return;
+      state.data.set(city.id, entry);
+      state.fetchedAt = Date.now();
+      state.lastError = false;
+      saveCache();
+    } catch (e) {
+      toast(`${city.name} 的天气数据获取失败，稍后重试`);
+    } finally {
+      state.loading = false;
+      syncLoadingUI();
+      renderAll();
+    }
+  }
+
+  function removeCity(id) {
+    if (state.cities.length <= 1) {
+      toast('至少保留一座城市');
+      return;
+    }
+    const city = state.cities.find((c) => c.id === id);
+    state.cities = state.cities.filter((c) => c.id !== id);
+    persistCities();
+    syncUrl();
+    renderAll();
+    toast(city ? `已移除${city.short}` : '已移除城市');
+  }
+
+  function resetCities() {
+    state.cities = DEFAULT_IDS.map((id) => PRESETS.find((c) => c.id === id)).filter(Boolean);
+    persistCities();
+    syncUrl();
+    closeDialog();
+    renderAll();
+    toast('已恢复默认城市');
+    refresh();
+  }
+
+  /* ---------------------------------------------------------------------
+     Events
+     --------------------------------------------------------------------- */
+  function attachEvents() {
+    el.refreshBtn.addEventListener('click', () => refresh());
+    el.bannerRetry.addEventListener('click', () => refresh());
+    el.addBtn.addEventListener('click', openDialog);
+    el.dialogClose.addEventListener('click', closeDialog);
+    el.dialog.addEventListener('click', (event) => {
+      if (event.target === el.dialog) closeDialog();
+    });
+    el.dialog.addEventListener('close', () => { el.geoToken += 1; });
+    el.search.addEventListener('input', debounce(onSearchInput, 120));
+    el.search.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const first = el.results.querySelector('.result-row:not(:disabled)');
+      if (first) first.click();
+    });
+    el.quick.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-quick]');
+      if (!chip || chip.disabled) return;
+      const city = PRESETS.find((c) => c.id === chip.dataset.quick);
+      if (city) addCity(city);
+    });
+    el.results.addEventListener('click', (event) => {
+      const row = event.target.closest('[data-result]');
+      if (!row || row.disabled) return;
+      const city = dialogCityMap.get(row.dataset.result);
+      if (city) addCity(city);
+    });
+    el.resetCities.addEventListener('click', resetCities);
+
+    el.cityRow.addEventListener('scroll', () => {
+      const atEnd = el.cityRow.scrollLeft + el.cityRow.clientWidth >= el.cityRow.scrollWidth - 4;
+      el.cityRow.classList.toggle('is-end', atEnd);
+      if (atEnd) el.swipeHint.hidden = true;
+      else updateSwipeHint();
+    }, { passive: true });
+
+    el.cityRow.addEventListener('click', (event) => {
+      const remove = event.target.closest('[data-remove]');
+      if (remove) {
+        removeCity(remove.dataset.remove);
+        return;
+      }
+      if (event.target.closest('[data-action="add"]')) openDialog();
+    });
+
+    el.chartLegend.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-legend]');
+      if (!button) return;
+      const id = button.dataset.legend;
+      if (state.hidden.has(id)) state.hidden.delete(id);
+      else state.hidden.add(id);
+      renderChart(false);
+    });
+
+    el.chartWrap.addEventListener('pointermove', (event) => {
+      if (!state.chart) return;
+      if (event.pointerType === 'touch' && event.buttons === 0) return;
+      const index = chartPointerIndex(event.clientX);
+      if (index !== null) showChartIndex(index, false);
+    });
+    el.chartWrap.addEventListener('pointerdown', (event) => {
+      if (!state.chart) return;
+      const index = chartPointerIndex(event.clientX);
+      if (index !== null) showChartIndex(index, false);
+    });
+    el.chartWrap.addEventListener('pointerleave', () => hideChartCursor());
+    el.chartWrap.addEventListener('focusin', () => {
+      if (state.chart && state.chart.index === null) showChartIndex(0, true);
+    });
+    el.chartWrap.addEventListener('focusout', (event) => {
+      if (!el.chartWrap.contains(event.relatedTarget)) hideChartCursor();
+    });
+    el.chartWrap.addEventListener('keydown', (event) => {
+      if (!state.chart) return;
+      const current = state.chart.index === null ? 0 : state.chart.index;
+      let next = null;
+      if (event.key === 'ArrowRight') next = current + 1;
+      else if (event.key === 'ArrowLeft') next = current - 1;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = state.chart.count - 1;
+      else if (event.key === 'Escape') { hideChartCursor(); return; }
+      if (next === null) return;
+      event.preventDefault();
+      showChartIndex(next, true);
+    });
+
+    const onResize = debounce(() => {
+      updateSwipeHint();
+      if (state.chart) renderChart(false);
+      else if (loadedItems().length) renderChart(false);
+    }, 160);
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(onResize);
+      observer.observe(el.chartWrap);
+    } else {
+      window.addEventListener('resize', onResize);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - state.fetchedAt > AUTO_REFRESH_MS) refresh();
+    });
+
+    setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, AUTO_REFRESH_MS);
+  }
+
+  function observeReveals() {
+    const targets = Array.from(document.querySelectorAll('.reveal'));
+    if (!('IntersectionObserver' in window)) {
+      targets.forEach((target) => target.classList.add('is-in'));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      let order = 0;
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const target = entry.target;
+        target.style.transitionDelay = `${order * 80}ms`;
+        target.classList.add('is-in');
+        observer.unobserve(target);
+        order += 1;
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+    targets.forEach((target) => observer.observe(target));
+  }
+
+  /* ---------------------------------------------------------------------
+     Boot
+     --------------------------------------------------------------------- */
+  function boot() {
+    cacheDom();
+    state.cities = loadCities();
+    loadCache();
+    persistCities();
+    syncUrl();
+    el.maxCities.textContent = String(MAX_CITIES);
+    el.cityCount.textContent = `已添加 ${state.cities.length} 座`;
+
+    applyPhase(computePhase());
+    renderAll();
+    tickClock();
+    setInterval(tickClock, 1000);
+    observeReveals();
+    attachEvents();
+    refresh();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+
+</script>
+</body>
+</html>
