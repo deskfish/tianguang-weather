@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>天光 · 城市天气对照</title>
+<title>天光 · 同一个时刻，不同的天空</title>
 <meta name="description" content="默认展示当前位置的实时天气，可添加城市横向对照逐时气温与未来七日预报。时间统一为北京时间。">
 <meta name="theme-color" content="#0f1728">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f1728'/%3E%3Cpath d='M7 22a9 9 0 0 1 18 0M3.5 22h25' fill='none' stroke='%23f2c14e' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -959,50 +959,30 @@ table { border-collapse: collapse; }
 /* ---------- footer ---------- */
 
 .footer {
-  margin-top: clamp(84px, 11vw, 148px);
+  margin-top: clamp(56px, 7vw, 92px);
   background: #151816;
   color: #f1efe6;
-  padding: clamp(44px, 6vw, 76px) var(--pad) clamp(32px, 4vw, 52px);
+  padding: 22px var(--pad) calc(22px + env(safe-area-inset-bottom));
 }
 
 .footer-inner {
   max-width: var(--shell);
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 540px);
-  gap: clamp(32px, 5vw, 72px);
-  align-items: end;
 }
 
-.footer-word {
-  font-family: var(--serif);
-  font-size: clamp(56px, 8vw, 104px);
-  font-weight: 400;
-  letter-spacing: .12em;
-  line-height: .95;
+.footer-credit {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  letter-spacing: .02em;
+  color: rgba(241, 239, 230, .55);
 }
 
-.footer-line {
-  margin-top: 18px;
-  font-size: 13px;
-  letter-spacing: .04em;
-  color: rgba(241, 239, 230, .58);
-}
-
-.footer-meta p {
-  margin: 0 0 12px;
-  font-size: 12.5px;
-  line-height: 1.75;
-  color: rgba(241, 239, 230, .6);
-  max-width: 56ch;
-}
-.footer-meta p:last-child { margin-bottom: 0; }
-.footer-meta a {
-  color: #f1efe6;
-  text-decoration-color: rgba(241, 239, 230, .4);
+.footer-credit a {
+  color: rgba(241, 239, 230, .82);
+  text-decoration-color: rgba(241, 239, 230, .3);
   text-underline-offset: 3px;
 }
-.footer-small { font-size: 11.5px !important; color: rgba(241, 239, 230, .4) !important; }
 
 /* ---------- dialog ---------- */
 
@@ -1476,7 +1456,7 @@ table { border-collapse: collapse; }
   <a class="brand" href="./" aria-label="天光 · 城市天气对照">
     <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#i-mark"></use></svg>
     <span class="brand-name">天光</span>
-    <span class="brand-sub">城市天气对照</span>
+    <span class="brand-sub">同一个时刻，不同的天空。</span>
   </a>
 
   <div class="clock" role="group" aria-label="北京时间">
@@ -1562,15 +1542,7 @@ table { border-collapse: collapse; }
 
 <footer class="footer">
   <div class="footer-inner">
-    <div class="footer-lead">
-      <p class="footer-word">天光</p>
-      <p class="footer-line">同一个时刻，不同的天空。</p>
-    </div>
-    <div class="footer-meta">
-      <p>天气数据来自 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>（CC BY 4.0）；行政区划与坐标数据来自 <a href="https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov" target="_blank" rel="noopener">AreaCity</a>（高德地图）。空气质量等级按 PM2.5 折算，仅供参考。</p>
-      <p>所有时间均为北京时间（UTC+8）。页面每 10 分钟自动更新，最近更新 <span id="updated-at">—</span>。</p>
-      <p class="footer-small">预报存在不确定性，出行请以当地气象台发布的信息为准。</p>
-    </div>
+    <p class="footer-credit">天气数据 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>（CC BY 4.0） · 行政区划 <a href="https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov" target="_blank" rel="noopener">AreaCity</a> · 仅供参考</p>
   </div>
 </footer>
 
