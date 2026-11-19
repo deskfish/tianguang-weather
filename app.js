@@ -15,8 +15,7 @@
   };
   const BJ_TZ = 'Asia/Shanghai';
   const MAX_CITIES = 6;
-  const DEFAULT_IDS = ['beijing', 'xuecheng'];
-  const STORE_CITIES = 'tianguang.cities.v1';
+  const STORE_CITIES = 'tianguang.cities.v2';
   const STORE_CACHE = 'tianguang.cache.v1';
   const AUTO_REFRESH_MS = 10 * 60 * 1000;
   const MAX_RESULTS = 8;
@@ -397,6 +396,7 @@
     el.swipeHint = $('#swipe-hint');
     el.clockTime = $('#clock-time');
     el.clockDate = $('#clock-date');
+    el.locateBtn = $('#locate-btn');
     el.refreshBtn = $('#refresh-btn');
     el.addBtn = $('#add-btn');
     el.banner = $('#banner');
@@ -442,20 +442,23 @@
     let ids = null;
     if (rawParam) ids = rawParam.split(',').map((s) => s.trim()).filter(Boolean);
     else if (storedList.length) ids = storedList.map((c) => (typeof c === 'string' ? c : c && c.id)).filter(Boolean);
-    if (!ids || !ids.length) ids = DEFAULT_IDS.slice();
+    if (!ids || !ids.length) return [];
 
     const picked = [];
     for (const id of ids) {
+      if (id === 'here') continue;
       const city = known.get(id);
       if (city && !picked.some((c) => c.id === id) && picked.length < MAX_CITIES) picked.push(city);
     }
-    if (!picked.length) {
-      for (const id of DEFAULT_IDS) {
-        const city = known.get(id);
-        if (city) picked.push(city);
-      }
+    // 上次的位置先恢复，随后会用浏览器定位更新
+    const storedHere = storedList
+      .map((raw) => normalizeCity(raw))
+      .filter((city) => city && city.id === 'here')[0];
+    if (storedHere) {
+      storedHere.here = true;
+      picked.unshift(storedHere);
     }
-    return picked;
+    return picked.slice(0, MAX_CITIES);
   }
 
   function persistCities() {
@@ -538,6 +541,12 @@
 
   async function refresh() {
     if (refreshPromise) return refreshPromise;
+    if (!state.cities.length) {
+      state.loading = false;
+      syncLoadingUI();
+      renderAll();
+      return 0;
+    }
     state.loading = true;
     syncLoadingUI();
     const idsAtStart = new Set(state.cities.map((c) => c.id));
@@ -565,9 +574,11 @@
         state.fetchedAt = Date.now();
         state.lastError = false;
         saveCache();
-        if (ok < state.cities.length && autoRetries < 2) {
+        if (ok < state.cities.length && autoRetries < 3) {
           autoRetries += 1;
-          setTimeout(() => { if (!refreshPromise) refresh(); }, 20000);
+          setTimeout(() => { if (!refreshPromise) refresh(); }, 5000);
+        } else if (ok === state.cities.length) {
+          autoRetries = 0;
         }
       } else {
         state.lastError = true;
@@ -594,6 +605,11 @@
     el.refreshBtn.classList.toggle('is-loading', state.loading);
     el.refreshBtn.disabled = state.loading;
     el.refreshBtn.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+    if (el.locateBtn) {
+      el.locateBtn.classList.toggle('is-loading', state.locating);
+      el.locateBtn.disabled = state.locating;
+      el.locateBtn.setAttribute('aria-busy', state.locating ? 'true' : 'false');
+    }
   }
 
   /* ---------------------------------------------------------------------
@@ -617,14 +633,20 @@
   }
 
   function referenceCity() {
-    const beijing = state.cities.find((c) => c.id === 'beijing');
-    if (beijing) return beijing;
-    const loaded = state.cities.find((c) => state.data.has(c.id));
-    return loaded || state.cities[0] || null;
+    return state.cities[0] || null;
   }
 
   function headlineFor(items) {
-    if (!items.length) return '此刻，北京与薛城';
+    if (!items.length) {
+      if (state.locating) return '正在定位…';
+      if (!state.cities.length) return '添加城市开始对照';
+      return '天气数据加载中';
+    }
+    const reference = state.cities[0];
+    const refData = reference && state.data.get(reference.id);
+    if (reference && (!refData || !fitsPayload(refData))) {
+      return `${reference.short}，天气加载中`;
+    }
     if (items.length === 1) {
       const current = items[0].data.forecast.current;
       const info = condition(current.weather_code, current.is_day === 1);
@@ -638,8 +660,10 @@
     if (!Number.isFinite(actual) || Math.abs(actual) < 0.05) {
       return `此刻，${a.city.short}与${b.city.short}气温相同`;
     }
-    const shown = Math.abs(actual) >= 1 ? String(Math.round(Math.abs(actual))) : Math.abs(actual).toFixed(1);
-    return `此刻，${a.city.short}比${b.city.short}${actual > 0 ? '高' : '低'} ${shown}°`;
+    if (Math.abs(actual) < 1) {
+      return `此刻，${a.city.short}与${b.city.short}气温接近`;
+    }
+    return `此刻，${a.city.short}比${b.city.short}${actual > 0 ? '高' : '低'} ${Math.round(Math.abs(actual))}°`;
   }
 
   function nextHoursDelta(item, hours = 3) {
@@ -724,13 +748,13 @@
 
   function cityColumnHTML(item, index) {
     const { city, data, color } = item;
-    const removeButton = `
+    const removeButton = city.here ? '' : `
       <button type="button" class="city-remove" data-remove="${esc(city.id)}" aria-label="移除${esc(city.name)}">
         <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-close"></use></svg>
       </button>`;
 
     const head = `
-      <p class="city-region"><span class="city-dot" style="--dot:${color}" aria-hidden="true"></span>${esc(city.region)}</p>
+      <p class="city-region"><span class="city-dot" style="--dot:${color}" aria-hidden="true"></span>${esc(city.region)}${city.here ? '<span class="here-tag">当前位置</span>' : ''}</p>
       <p class="city-name">${esc(city.name)}</p>`;
 
     if (!data || !data.forecast || !data.forecast.current) {
@@ -826,14 +850,35 @@
   }
 
   function renderError() {
-    el.headline.textContent = '此刻，北京与薛城';
+    if (!state.cities.length) {
+      el.headline.textContent = state.locating ? '正在定位…' : '添加城市开始对照';
+      el.insight.textContent = state.locating ? '正在获取你所在的位置…' : '允许定位后自动展示当前位置天气，或手动添加城市进行对比。';
+      el.solar.hidden = true;
+      el.solar.innerHTML = '';
+      el.cityRow.dataset.count = '0';
+      el.cityRow.innerHTML = `<div class="loc-empty">
+        <p class="loc-empty-kicker">${state.locating ? 'LOCATING' : 'LOCATION'}</p>
+        <p class="loc-empty-title">${state.locating ? '正在获取你所在的位置' : (state.locationError ? '定位未开启' : '开始对照')}</p>
+        <p class="loc-empty-note">${state.locating ? '允许定位后，首页默认展示当前位置的天气；也可以添加其他城市进行对比。' : '允许定位后自动展示当前位置的天气，或手动添加一座城市开始对照。'}</p>
+        <div class="loc-empty-actions">
+          <button type="button" class="btn btn--solid" data-action="locate"${state.locating ? ' disabled' : ''}>${state.locating ? '定位中…' : '允许定位'}</button>
+        </div>
+      </div>` + addTileHTML();
+      el.chartLegend.innerHTML = '';
+      el.chartWrap.innerHTML = '<p class="empty-state">定位或添加城市后显示逐时数据。</p>';
+      el.compareTable.innerHTML = '<p class="empty-state">定位或添加城市后显示对照数据。</p>';
+      el.weekGrid.innerHTML = '<p class="empty-state">定位或添加城市后显示七日预报。</p>';
+      updateSwipeHint();
+      return;
+    }
+    el.headline.textContent = '天气数据加载中';
     el.insight.textContent = '天气数据暂时没有到站，检查网络后可以重试。';
     el.solar.hidden = true;
     el.solar.innerHTML = '';
     el.cityRow.dataset.count = String(state.cities.length);
     el.cityRow.innerHTML = state.cities.map((city, index) => `
       <article class="city city--empty" style="--dot:${PALETTE[index % PALETTE.length]};--i:${index}">
-        <p class="city-region"><span class="city-dot" aria-hidden="true"></span>${esc(city.region)}</p>
+        <p class="city-region"><span class="city-dot" aria-hidden="true"></span>${esc(city.region)}${city.here ? '<span class="here-tag">当前位置</span>' : ''}</p>
         <p class="city-name">${esc(city.name)}</p>
         <div class="city-temp-line"><p class="city-temp">—</p></div>
         <p class="city-meta">暂未取到数据。</p>
@@ -1304,7 +1349,9 @@
     const hasAny = loadedItems().length > 0;
     applyPhase(computePhase());
 
-    if (hasAny) {
+    if (!state.cities.length) {
+      renderError();
+    } else if (hasAny) {
       renderSky();
       renderChart(!state.chartAnimated);
       state.chartAnimated = true;
@@ -1524,6 +1571,75 @@
     }, 600);
   }
 
+  function nearestCity(lat, lon) {
+    const la = Number(lat);
+    const lo = Number(lon);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+    const clamp = Math.max(0.2, Math.cos(la * Math.PI / 180));
+    let best = null;
+    let bestD = Infinity;
+    for (const city of PRESETS.concat(getPlaces())) {
+      const dx = (city.lat - la) * clamp;
+      const dy = city.lon - lo;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = city; }
+    }
+    return best ? Object.assign({}, best) : null;
+  }
+
+  function locate(options = {}) {
+    if (state.locating) return;
+    state.locating = true;
+    state.locationError = false;
+    state.loading = true;
+    syncLoadingUI();
+    renderAll();
+
+    const fail = () => {
+      state.locating = false;
+      state.locationError = true;
+      state.loading = false;
+      syncLoadingUI();
+      renderAll();
+      if (options.manual) toast('定位失败，请检查浏览器定位权限');
+    };
+
+    if (!navigator.geolocation) {
+      fail();
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = Number(position.coords.latitude);
+        const lon = Number(position.coords.longitude);
+        const place = nearestCity(lat, lon);
+        const here = {
+          id: 'here',
+          name: place ? place.name : '当前位置',
+          short: place ? place.short : '这里',
+          region: place ? place.region : '附近',
+          lat,
+          lon,
+          here: true
+        };
+        state.data.delete('here');
+        state.cities = [here].concat(state.cities.filter((city) => city.id !== 'here')).slice(0, MAX_CITIES);
+        state.locating = false;
+        state.locationError = false;
+        state.loading = false;
+        persistCities();
+        syncUrl();
+        syncLoadingUI();
+        renderAll();
+        if (refreshPromise) refreshPromise.then(() => refresh());
+        else refresh();
+        if (options.manual) toast(`已定位到${here.name}`);
+      },
+      fail,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }
+
   async function addCity(city) {
     if (!city) return;
     if (state.cities.length >= MAX_CITIES) {
@@ -1561,6 +1677,10 @@
   }
 
   function removeCity(id) {
+    if (id === 'here') {
+      toast('当前位置不能移除');
+      return;
+    }
     if (state.cities.length <= 1) {
       toast('至少保留一座城市');
       return;
@@ -1574,19 +1694,20 @@
   }
 
   function resetCities() {
-    state.cities = DEFAULT_IDS.map((id) => PRESETS.find((c) => c.id === id)).filter(Boolean);
+    state.cities = [];
+    state.data.clear();
     persistCities();
     syncUrl();
     closeDialog();
     renderAll();
-    toast('已恢复默认城市');
-    refresh();
+    locate({ manual: true });
   }
 
   /* ---------------------------------------------------------------------
      Events
      --------------------------------------------------------------------- */
   function attachEvents() {
+    el.locateBtn.addEventListener('click', () => locate({ manual: true }));
     el.refreshBtn.addEventListener('click', () => refresh());
     el.bannerRetry.addEventListener('click', () => refresh());
     el.addBtn.addEventListener('click', openDialog);
@@ -1627,6 +1748,10 @@
       const remove = event.target.closest('[data-remove]');
       if (remove) {
         removeCity(remove.dataset.remove);
+        return;
+      }
+      if (event.target.closest('[data-action="locate"]')) {
+        locate({ manual: true });
         return;
       }
       if (event.target.closest('[data-action="add"]')) openDialog();
@@ -1733,7 +1858,8 @@
     setInterval(tickClock, 1000);
     observeReveals();
     attachEvents();
-    refresh();
+    if (state.cities.length) refresh();
+    locate();
   }
 
   if (document.readyState === 'loading') {

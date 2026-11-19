@@ -1323,3 +1323,65 @@ table { border-collapse: collapse; }
   }
   .js .reveal { opacity: 1; transform: none; }
 }
+
+
+/* 当前位置与定位空态 */
+.here-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: .04em;
+  opacity: .62;
+  vertical-align: 1px;
+}
+
+.loc-empty {
+  flex: 1 1 100%;
+  padding: 54px 0 40px;
+}
+
+.loc-empty-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .28em;
+  color: color-mix(in srgb, currentColor 48%, transparent);
+}
+
+.loc-empty-title {
+  margin: 16px 0 0;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.2;
+}
+
+.loc-empty-note {
+  max-width: 520px;
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: color-mix(in srgb, currentColor 66%, transparent);
+}
+
+.loc-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.loc-empty .btn {
+  width: auto;
+}
+
+
+.city-row[data-count="0"] {
+  display: block;
+  overflow: visible;
+}
+
+.city-row[data-count="0"] .add-city {
+  margin-top: 18px;
+}

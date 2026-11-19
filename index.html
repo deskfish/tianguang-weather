@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>天光 · 北京与薛城天气对照</title>
-<meta name="description" content="同一时刻，横向对照北京、薛城区以及更多城市的实时天气、逐时气温与未来七日预报。时间统一为北京时间。">
+<title>天光 · 城市天气对照</title>
+<meta name="description" content="默认展示当前位置的实时天气，可添加城市横向对照逐时气温与未来七日预报。时间统一为北京时间。">
 <meta name="theme-color" content="#0f1728">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230f1728'/%3E%3Cpath d='M7 22a9 9 0 0 1 18 0M3.5 22h25' fill='none' stroke='%23f2c14e' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
@@ -78,6 +78,7 @@
     <path d="M20.4 14.2A8.5 8.5 0 1 1 18.2 5.8L21 8.6"/>
   </symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4L21 21"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21.2s7-6.3 7-11.2a7 7 0 1 0-14 0c0 4.9 7 11.2 7 11.2Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
 </svg>
 
 <a class="skip-link" href="#main">跳到主要内容</a>
@@ -96,6 +97,10 @@
   </div>
 
   <div class="mast-tools">
+    <button type="button" class="btn btn--quiet" id="locate-btn" aria-label="定位当前城市">
+      <svg class="ui-icon" aria-hidden="true"><use href="#i-pin"></use></svg>
+      <span class="btn-label">定位</span>
+    </button>
     <button type="button" class="btn btn--quiet" id="refresh-btn" aria-label="刷新天气数据">
       <svg class="ui-icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
       <span class="btn-label">刷新</span>
@@ -117,10 +122,10 @@
     <div class="sky-inner">
       <div class="sky-main">
         <div class="sky-copy">
-          <h1 class="headline" id="headline">此刻，北京与薛城</h1>
+          <h1 class="headline" id="headline">正在定位…</h1>
           <p class="insight" id="insight">正在获取两座城市的实时天气…</p>
         </div>
-        <div class="solar" id="solar" aria-label="北京今日日照"></div>
+        <div class="solar" id="solar" aria-label="当前位置今日日照"></div>
       </div>
       <div class="city-row" id="city-row" role="group" aria-label="城市天气对照"></div>
       <p class="swipe-hint" id="swipe-hint" hidden>横向滚动，比较全部城市 →</p>
@@ -198,7 +203,7 @@
     <div class="quick" id="quick-cities" aria-label="热门城市"></div>
     <div class="results" id="city-results" aria-label="搜索结果"></div>
     <div class="dialog-foot">
-      <button type="button" class="link-btn" id="reset-cities">恢复默认（北京 / 薛城区）</button>
+      <button type="button" class="link-btn" id="reset-cities">回到当前位置</button>
       <span class="dialog-count" id="city-count">已添加 2 座</span>
     </div>
   </div>
