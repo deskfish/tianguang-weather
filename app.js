@@ -425,6 +425,10 @@
      --------------------------------------------------------------------- */
   function loadCities() {
     const known = new Map(PRESETS.map((c) => [c.id, c]));
+    // 全国区县 ID 也要能从分享链接恢复
+    for (const city of getPlaces()) {
+      if (!known.has(city.id)) known.set(city.id, city);
+    }
     const storedRaw = readJSON(safeGet(STORE_CITIES));
     const storedList = Array.isArray(storedRaw) ? storedRaw : [];
 
