@@ -313,6 +313,40 @@
     };
   }
 
+  function stripRegionSuffix(value) {
+    return String(value || '')
+      .replace(/(特别行政区|自治区|自治州|自治县|新区|省|区|县|市|旗|盟)$/g, '')
+      .trim();
+  }
+
+  let placesCache = null;
+  function getPlaces() {
+    if (placesCache) return placesCache;
+    const presetNames = new Set(PRESETS.map((city) => city.name).concat(PRESETS.map((city) => city.short)));
+    placesCache = (window.CN_PLACES || [])
+      .map((row) => {
+        const name = String(row[0] || '').trim();
+        const short = stripRegionSuffix(name) || name;
+        if (!name || presetNames.has(name) || presetNames.has(short)) return null;
+        const province = stripRegionSuffix(row[2]);
+        const city = stripRegionSuffix(row[1]);
+        const region = [province, city]
+          .filter(Boolean)
+          .filter((part, index, list) => list.indexOf(part) === index)
+          .join(' · ');
+        return normalizeCity({
+          id: `cn-${row[5]}`,
+          name,
+          short,
+          region: region || '中国',
+          lat: row[3],
+          lon: row[4]
+        });
+      })
+      .filter(Boolean);
+    return placesCache;
+  }
+
   function toCityFromGeo(result) {
     if (!result || typeof result !== 'object') return null;
     const name = String(result.name || '').slice(0, 24);
@@ -1408,7 +1442,7 @@
     dialogCityMap = new Map();
 
     if (q) {
-      const local = PRESETS.filter((city) => {
+      const local = PRESETS.concat(getPlaces()).filter((city) => {
         const haystack = `${city.name}${city.short}${city.region}`;
         return haystack.includes(q);
       }).slice(0, MAX_RESULTS);
@@ -1429,7 +1463,7 @@
     }
 
     if (!q) {
-      el.results.innerHTML = '<p class="result-hint">输入城市名称搜索，或从上方热门城市中添加。数据来自 Open-Meteo 地名库。</p>';
+      el.results.innerHTML = '<p class="result-hint">输入城市或区县名称搜索（如 微山县、薛城区），也可以从上方热门城市中添加。区县坐标来自 AreaCity（高德地图）。</p>';
       return;
     }
 
@@ -1455,12 +1489,15 @@
     clearTimeout(searchTimer);
     if (!query) return;
 
+    const localHit = PRESETS.concat(getPlaces()).some((city) => `${city.name}${city.short}${city.region}`.includes(query));
+    if (localHit) return;
+
     searchTimer = setTimeout(async () => {
       const currentToken = token;
       renderResults(query, { searching: true });
       try {
-        const params = new URLSearchParams({ name: query, count: '8', language: 'zh', format: 'json' });
-        const payload = await fetchJSON(`${API.geo}?${params.toString()}`, 8000);
+        const meteoParams = new URLSearchParams({ name: query, count: '8', language: 'zh', format: 'json' });
+        const payload = await fetchJSON(`${API.geo}?${meteoParams.toString()}`, 8000);
         if (currentToken !== state.geoToken || query !== state.geoQuery) return;
         const seen = new Set();
         const results = [];
@@ -1472,7 +1509,7 @@
           if (PRESETS.some((preset) => preset.name === city.name)) continue;
           seen.add(dedupe);
           results.push(city);
-          if (results.length >= 6) break;
+          if (results.length >= 8) break;
         }
         state.geoResults = results;
         renderResults(query);
@@ -1480,7 +1517,7 @@
         if (currentToken !== state.geoToken) return;
         renderResults(query);
       }
-    }, 280);
+    }, 600);
   }
 
   async function addCity(city) {
