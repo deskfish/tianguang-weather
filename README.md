@@ -1,6 +1,6 @@
 # 共此天色 · 城市天气对照（网页版）
 
-单页静态站点，零依赖、无需构建。首次打开默认定位并展示**当前位置**的天气，可横向添加最多 6 座城市做对比。
+单页静态站点，零依赖、无需构建。天气数据来自和风天气；首次打开默认定位并展示**当前位置**的天气，可横向添加最多 6 座城市做对比。
 
 **线上地址：https://deskfish.github.io/tianguang-weather/**
 
@@ -22,12 +22,12 @@ python3 -m http.server 4173
 - 未来 24 小时逐时气温折线，可悬停 / 键盘查看，图例可隐藏城市
 - 逐项指标表（14 项）与未来七日预报
 - 页面天空配色随当前位置日照阶段变化
-- 10 分钟自动刷新、离线缓存、失败提示
+- 30 分钟自动刷新、离线缓存、失败提示
 - 响应式：桌面 / 平板 / 手机
 
 ## 数据
 
-- 预报与空气质量：[Open-Meteo](https://open-meteo.com/)（CC BY 4.0）
+- 预报与空气质量：[和风天气 QWeather](https://www.qweather.com/)
 - 城市/区县行政区划与中心坐标：[AreaCity](https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov)（高德地图），仅用于天气查询定位
 - 空气质量等级按 PM2.5 折算，仅供参考
 - 所有时间均为北京时间（UTC+8）
@@ -40,7 +40,7 @@ python3 -m http.server 4173
 - **Vercel / Netlify**：导入目录，Build Command 留空，Output Directory 设为当前目录。
 - **对象存储 / Nginx**：上传三个文件，设置 `text/html`、`text/css`、`text/javascript` 即可。
 
-> 页面直连 Open-Meteo，浏览器端无跨域限制；如需国内访问更稳定，可换成自建代理（参考 `../weather-miniprogram/server/proxy.js` 的路由与参数）。
+> 网页版直连和风天气，API Key 会出现在前端源码中；建议在和风天气控制台为 Key 设置域名限制，或改用自建代理。和风天气 API Host 与 Key 在 `app.js` 顶部配置。
 
 ## 小程序版
 

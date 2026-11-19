@@ -1,6 +1,6 @@
 /* =========================================================================
    共此天色 · 城市天气对照
-   Vanilla JS, no build step. Data: Open-Meteo forecast + air quality.
+   Vanilla JS, no build step. Data: QWeather forecast + air quality.
    ========================================================================= */
 'use strict';
 
@@ -9,39 +9,22 @@
      Constants
      --------------------------------------------------------------------- */
   const API = {
-    forecast: 'https://api.open-meteo.com/v1/forecast',
-    air: 'https://air-quality-api.open-meteo.com/v1/air-quality',
     geo: 'https://geocoding-api.open-meteo.com/v1/search'
+  };
+  // 和风天气：网页版为公开静态站点，API Key 会暴露在代码中；
+  // 建议在和风控制台为该 KEY 设置域名限制，或改为自建代理。
+  const QWEATHER = {
+    host: 'https://kd44ud3a2q.re.qweatherapi.com',
+    key: 'b9caae67a37044269b73682cb0806b6e'
   };
   const BJ_TZ = 'Asia/Shanghai';
   const MAX_CITIES = 6;
   const STORE_CITIES = 'tianguang.cities.v2';
   const STORE_CACHE = 'tianguang.cache.v1';
-  const AUTO_REFRESH_MS = 10 * 60 * 1000;
+  const AUTO_REFRESH_MS = 30 * 60 * 1000;
   const MAX_RESULTS = 8;
 
   const PALETTE = ['#b4452e', '#2f5d7c', '#6b7a35', '#7c4d72', '#a8792c', '#2e7364'];
-
-  const FORECAST_PARAMS = new URLSearchParams({
-    timezone: BJ_TZ,
-    current: [
-      'temperature_2m', 'relative_humidity_2m', 'apparent_temperature', 'is_day',
-      'precipitation', 'weather_code', 'cloud_cover', 'pressure_msl',
-      'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'visibility'
-    ].join(','),
-    hourly: 'temperature_2m,precipitation_probability,weather_code',
-    daily: [
-      'weather_code', 'temperature_2m_max', 'temperature_2m_min', 'sunrise', 'sunset',
-      'uv_index_max', 'precipitation_probability_max', 'wind_speed_10m_max'
-    ].join(','),
-    wind_speed_unit: 'kmh',
-    forecast_days: '7'
-  });
-
-  const AIR_PARAMS = new URLSearchParams({
-    timezone: BJ_TZ,
-    current: 'pm2_5,pm10,us_aqi'
-  });
 
   const PRESETS = [
     { id: 'beijing', name: '北京', short: '北京', region: '北京市', lat: 39.9042, lon: 116.4074 },
@@ -514,29 +497,121 @@
     }
   }
 
-  function forecastUrl(city) {
-    const params = new URLSearchParams(FORECAST_PARAMS);
-    params.set('latitude', String(city.lat));
-    params.set('longitude', String(city.lon));
-    return `${API.forecast}?${params.toString()}`;
+  function qweatherUrl(path, params) {
+    const query = new URLSearchParams(Object.assign({ key: QWEATHER.key, lang: 'zh' }, params || {}));
+    return `${QWEATHER.host}${path}?${query.toString()}`;
   }
 
-  function airUrl(city) {
-    const params = new URLSearchParams(AIR_PARAMS);
-    params.set('latitude', String(city.lat));
-    params.set('longitude', String(city.lon));
-    return `${API.air}?${params.toString()}`;
+  async function qweatherGet(path, params) {
+    return fetchJSON(qweatherUrl(path, params), 15000);
+  }
+
+  function num(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function isNightIcon(icon) {
+    const n = Number(icon);
+    return n >= 150 && n < 200;
+  }
+
+  function mapWmo(icon, text) {
+    const t = String(text || '');
+    if (/雷/.test(t)) return /冰雹/.test(t) ? 96 : 95;
+    if (/冰雹/.test(t)) return 96;
+    if (/雨夹雪|冻雨|雨雪/.test(t)) return 66;
+    if (/雪/.test(t)) {
+      if (/暴雪/.test(t)) return 75;
+      if (/中雪/.test(t)) return 73;
+      return 71;
+    }
+    if (/暴雨|大雨/.test(t)) return 65;
+    if (/中雨/.test(t)) return 63;
+    if (/雨|阵雨|毛毛雨/.test(t)) return 61;
+    if (/雾|霾|沙|尘/.test(t)) return 45;
+    if (/阴/.test(t)) return 3;
+    if (/多云|晴间/.test(t)) return 2;
+    if (/晴/.test(t)) return 0;
+    const n = Number(icon);
+    if (n === 100 || n === 150) return 0;
+    if (n === 104) return 3;
+    if (n >= 300 && n < 400) return 61;
+    if (n >= 400 && n < 500) return 71;
+    if (n >= 500 && n < 600) return 45;
+    return 2;
+  }
+
+  function normalizeQWeather(now, hourly, daily) {
+    const current = (now && now.now) || {};
+    const hourlyList = (hourly && hourly.hourly) || [];
+    const dailyList = (daily && daily.daily) || [];
+    return {
+      current: {
+        temperature_2m: num(current.temp),
+        relative_humidity_2m: num(current.humidity),
+        apparent_temperature: num(current.feelsLike),
+        is_day: isNightIcon(current.icon) ? 0 : 1,
+        precipitation: num(current.precip),
+        weather_code: mapWmo(current.icon, current.text),
+        cloud_cover: num(current.cloud),
+        pressure_msl: num(current.pressure),
+        wind_speed_10m: num(current.windSpeed),
+        wind_direction_10m: num(current.wind360),
+        wind_gusts_10m: null,
+        visibility: num(current.vis) !== null ? num(current.vis) * 1000 : null
+      },
+      hourly: {
+        time: hourlyList.map((item) => String(item.fxTime || '').slice(0, 16)),
+        temperature_2m: hourlyList.map((item) => num(item.temp)),
+        precipitation_probability: hourlyList.map((item) => num(item.pop)),
+        weather_code: hourlyList.map((item) => mapWmo(item.icon, item.text))
+      },
+      daily: {
+        time: dailyList.map((item) => item.fxDate),
+        weather_code: dailyList.map((item) => mapWmo(item.iconDay, item.textDay)),
+        temperature_2m_max: dailyList.map((item) => num(item.tempMax)),
+        temperature_2m_min: dailyList.map((item) => num(item.tempMin)),
+        sunrise: dailyList.map((item) => `${item.fxDate}T${item.sunrise}`),
+        sunset: dailyList.map((item) => `${item.fxDate}T${item.sunset}`),
+        uv_index_max: dailyList.map((item) => num(item.uvIndex)),
+        precipitation_probability_max: dailyList.map(() => null),
+        wind_speed_10m_max: dailyList.map((item) => num(item.windSpeedDay))
+      }
+    };
+  }
+
+  function normalizeQWeatherAir(raw) {
+    const pollutants = (raw && raw.pollutants) || [];
+    const pollutant = (code) => {
+      const item = pollutants.find((p) => p.code === code);
+      return item && item.concentration ? num(item.concentration.value) : null;
+    };
+    const indexes = (raw && raw.indexes) || [];
+    const us = indexes.find((item) => item.code === 'us-epa');
+    return { current: { pm2_5: pollutant('pm2p5'), pm10: pollutant('pm10'), us_aqi: us ? num(us.aqi) : null } };
   }
 
   async function fetchCityData(city) {
-    const [forecast, air] = await Promise.all([
-      fetchJSON(forecastUrl(city)),
-      fetchJSON(airUrl(city), 9000).catch(() => null)
+    const lat = Number(city.lat);
+    const lon = Number(city.lon);
+    const location = `${lon.toFixed(2)},${lat.toFixed(2)}`;
+    const [now, hourly, daily, air] = await Promise.all([
+      qweatherGet('/v7/weather/now', { location, unit: 'm' }),
+      qweatherGet('/v7/weather/24h', { location, unit: 'm' }),
+      qweatherGet('/v7/weather/7d', { location, unit: 'm' }),
+      qweatherGet(`/airquality/v1/current/${lat.toFixed(2)}/${lon.toFixed(2)}`).catch(() => null)
     ]);
-    if (!forecast || !forecast.current || !forecast.hourly || !forecast.daily) {
-      throw new Error('Malformed forecast payload');
+    if (String(now.code) !== '200' || String(hourly.code) !== '200' || String(daily.code) !== '200') {
+      throw new Error('QWeather response error');
     }
-    return { id: city.id, forecast, air, fetchedAt: Date.now() };
+    return {
+      id: city.id,
+      forecast: normalizeQWeather(now, hourly, daily),
+      air: air ? normalizeQWeatherAir(air) : null,
+      fetchedAt: Date.now()
+    };
   }
 
   async function refresh() {
@@ -1249,7 +1324,7 @@
         label: '降水 / 概率',
         value: (d) => {
           const prob = d.forecast.daily.precipitation_probability_max;
-          return `${fmt1(d.forecast.current.precipitation)} mm <span class="cell-sub">${Number.isFinite(prob && prob[0]) ? prob[0] : '—'}%</span>`;
+          return `${fmt1(d.forecast.current.precipitation)} mm <span class="cell-sub">${Number.isFinite(prob && prob[0]) ? prob[0] + '%' : '—'}</span>`;
         }
       },
       { label: '云量', value: (d) => `${fmtInt(d.forecast.current.cloud_cover)}%` },
